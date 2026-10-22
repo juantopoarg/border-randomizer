@@ -61,12 +61,23 @@ NE_DATA_DIR=/path/to/geojson npm test      # adds the real-data tests
 7. **Capitals:** Natural Earth populated places; if a territory has none, the nearest unused city, marked `*`.
 8. **Names:** head of the main contributing country's name plus tail of the second (when ≥ 12 % of the area), or head + an ending by continent; checked against pronounceability rules and unique, never equal to a real name or to the previous generation.
 
-## Data sources
+## Datasets
 
-- Borders and population: [Natural Earth](https://www.naturalearthdata.com/) 110m `admin_0_countries` (public domain).
-- Cities: Natural Earth 50m `populated_places_simple`.
-- Served from `cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@v5.1.2` with a `raw.githubusercontent.com` fallback. D3 7.9.0 from jsDelivr with unpkg fallback.
-- Satellite: NASA GIBS `BlueMarble_ShadedRelief_Bathymetry` (WMS, EPSG:4326).
+| Used for | Dataset | Fields used | License |
+|---|---|---|---|
+| Country borders (real map and land mask) | [Natural Earth](https://www.naturalearthdata.com/) 1:110m **Admin 0 – Countries** (`ne_110m_admin_0_countries.geojson`) | geometry, `NAME`, `NAME_EN`, `NAME_ES`, `ADM0_A3`, `CONTINENT` | Public domain |
+| Population | Same file, field `POP_EST` (Natural Earth's estimate per country, taken from its 2019-era release) | `POP_EST` | Public domain |
+| Cities and capitals | Natural Earth 1:50m **Populated Places (simple)** (`ne_50m_populated_places_simple.geojson`) | `name`, `adm0cap`, `adm0_a3`, `pop_max`, coordinates | Public domain |
+| Satellite layer | [NASA GIBS](https://earthdata.nasa.gov/eosdis/science-system-description/eosdis-components/gibs) WMS, layer `BlueMarble_ShadedRelief_Bathymetry` (Blue Marble imagery) | image tiles | NASA, freely usable with attribution |
+| Map library | [D3](https://d3js.org/) 7.9.0 (zoom and selection only) | n/a | ISC |
+
+How the data is used:
+- **Population of generated countries is an estimate, not a census.** Each real country's `POP_EST` is spread evenly over its land area (0.5° grid cells weighted by real surface area); a new country adds up the cells it covers. The world total is conserved. Real population concentrations (cities, coasts) are not modelled.
+- **City populations** (`pop_max`, the largest figure Natural Earth lists for each place) are used only to rank cities and to choose capitals; they are not mixed into the country totals.
+- **Area** is computed from the grid cells (≈ km²), not taken from any dataset.
+- **Names** of generated countries are invented; the real names (`NAME_EN` / `NAME_ES`) are only used as raw material and to avoid collisions.
+
+Data files are loaded at run time from `cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@v5.1.2/geojson/` (version-pinned, so results stay reproducible), with a `raw.githubusercontent.com` fallback. D3 comes from jsDelivr with an unpkg fallback. Nothing is stored in the repository.
 
 ## Error handling
 
