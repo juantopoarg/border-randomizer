@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Border Randomizer</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2330; --muted: #5d6879; --line: #d9dde4;
+    --ocean: #cfe3ef; --accent: #1f5fbf; --accent-ink: #ffffff; --warn: #7a4b00; --warn-bg: #fff4d6;
+    --err: #8a1c1c; --err-bg: #fde4e4; --sel: #111; --ice: #e6eef3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1b2029; --ink: #e8ebf1; --muted: #9aa5b6; --line: #2d3442;
+      --ocean: #16222e; --accent: #5b9bff; --accent-ink: #0b1220; --warn: #ffd98a; --warn-bg: #3a2f10;
+      --err: #ffb4b4; --err-bg: #3b1a1a; --sel: #fff; --ice: #46566a;
+    }
+  }
+  [hidden] { display: none !important; }   /* sin esto, display:flex/grid de abajo anula el atributo hidden */
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink); }
+  header { padding: 12px 16px; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; }
+  h1 { font-size: 18px; margin: 0; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+  .controls label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+  .controls output { min-width: 3ch; color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 600; }
+  input[type=range] { width: 170px; accent-color: var(--accent); }
+  input[type=text], select { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+  input[type=text] { width: 110px; }
+  button { font: inherit; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 6px 12px; border-radius: 6px; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled, input:disabled, select:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button.toggle[aria-pressed=true] { background: color-mix(in srgb, var(--accent) 22%, var(--panel)); border-color: var(--accent); }
+  button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #langBtn { margin-left: auto; }
+  #status { width: 100%; font-size: 13px; color: var(--muted); }
+  #banner { margin: 12px 16px 0; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
+  #banner.err { background: var(--err-bg); color: var(--err); }
+  #banner.warn { background: var(--warn-bg); color: var(--warn); }
+  #banner button { margin-left: 8px; padding: 3px 10px; }
+  #banner details { margin-top: 6px; font-size: 12px; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px; align-items: start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  #mapWrap { position: relative; background: var(--ocean); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  svg#map { display: block; width: 100%; height: auto; touch-action: none; cursor: grab; }
+  svg#map:active { cursor: grabbing; }
+  .country { stroke: var(--panel); stroke-width: .6; vector-effect: non-scaling-stroke; fill-rule: evenodd; }
+  .cell { stroke: #fff; stroke-opacity: .85; stroke-width: .7; vector-effect: non-scaling-stroke; stroke-linejoin: round; fill-rule: evenodd; }
+  .cell.fixed { fill: var(--ice); }
+  .sat .country { fill-opacity: .26; stroke: #fff; stroke-opacity: .8; }
+  .sat .cell { fill-opacity: .30; stroke-opacity: 1; }
+  .sat .cell.fixed { fill-opacity: .15; }
+  /* Resaltado: al pasar el cursor el resto se atenúa y el país elegido se dibuja encima con relleno vivo y doble contorno */
+  .hovering .cell:not(.fixed), .hovering .country { fill-opacity: .38; }
+  .hovering .cell.fixed { fill-opacity: .5; }
+  .sat.hovering .cell, .sat.hovering .country { fill-opacity: .08; stroke-opacity: .5; }
+  #hoverG path { pointer-events: none; vector-effect: non-scaling-stroke; fill-rule: evenodd; }
+  #hoverG .hl-fill { fill-opacity: 1; stroke: none; }
+  .sat #hoverG .hl-fill { fill-opacity: .55; }
+  #hoverG .hl-out { fill: none; stroke: #000; stroke-opacity: .85; stroke-width: 4.5; stroke-linejoin: round; }
+  #hoverG .hl-in { fill: none; stroke: #fff; stroke-width: 2; stroke-linejoin: round; }
+  .country.sel, .cell.sel { stroke: var(--sel); stroke-opacity: 1; stroke-width: 2; }
+  .sat .cell.sel, .sat .country.sel { fill-opacity: .5; stroke: #fff; }
+  #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: rgba(15,20,30,.94); color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 14px; max-width: min(92vw, 520px); z-index: 10; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+  .cap { fill: #fff; stroke: #111; stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
+  .topcity circle { fill: #ffd400; stroke: #111; stroke-width: 1.2; }
+  .topcity text { font: 700 11px system-ui, sans-serif; fill: #111; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
+  #tip { position: absolute; pointer-events: none; background: rgba(15,20,30,.92); color: #fff; padding: 6px 9px; border-radius: 6px; font-size: 12.5px; line-height: 1.35; max-width: 240px; z-index: 3; }
+  #tip b { font-size: 13.5px; }
+  #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--ocean) 85%, transparent); font-weight: 600; z-index: 4; text-align: center; padding: 16px; }
+  aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  aside section, aside details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  aside h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+  #detail h3 { margin: 0 0 6px; font-size: 18px; }
+  #detail dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 14px; }
+  #detail dt { color: var(--muted); }
+  #detail dd { margin: 0; }
+  #detail .note { margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+  #detail .hint { color: var(--muted); font-size: 14px; }
+  #topList { margin: 0; padding-left: 20px; font-size: 14px; }
+  #topMsg { margin: 0; font-size: 14px; color: var(--muted); }
+  #topList li { margin: 2px 0; }
+  #topList .sub { color: var(--muted); font-size: 12.5px; display: block; }
+  #list { max-height: 340px; overflow: auto; margin: 0 -4px; }
+  .row { display: flex; justify-content: space-between; gap: 8px; width: 100%; text-align: left; border: 0; background: none; padding: 4px; border-radius: 4px; font-size: 14px; }
+  .row:hover { background: var(--bg); }
+  .row.active { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+  .row .pp { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  details summary { cursor: pointer; font-weight: 600; }
+  details ul { font-size: 13.5px; color: var(--muted); margin: 8px 0 0; padding-left: 18px; }
+</style>
+<!-- D3 v7 (sólo zoom y selección). Si el primer CDN falla se intenta con un segundo. -->
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"
+        onerror="this.onerror=null;var s=document.createElement('script');s.src='https://unpkg.com/d3@7.9.0/dist/d3.min.js';document.head.appendChild(s);"></script>
+</head>
+<body>
+<header>
+  <h1 data-i18n="title">Border Randomizer</h1>
+  <div class="controls">
+    <label for="gran"><span data-i18n="granularity">Granularity</span>
+      <input id="gran" type="range" min="0" max="100" value="46" disabled aria-describedby="countOut">
+      <output id="countOut" for="gran">40</output> <span data-i18n="countriesUnit">countries</span>
+    </label>
+    <label for="capMode"><span data-i18n="capitalLabel">Capital</span>
+      <select id="capMode" disabled>
+        <option value="populous" data-i18n="capPopulous">Most populous city</option>
+        <option value="central" data-i18n="capCentral">Most central city</option>
+        <option value="random" data-i18n="capRandom">Random among top 3</option>
+      </select>
+    </label>
+    <label for="seedInput"><span data-i18n="seed">Seed</span>
+      <input id="seedInput" type="text" inputmode="numeric" data-i18n-ph="seedPh" placeholder="random" disabled>
+    </label>
+    <button id="genBtn" class="primary" disabled data-i18n="gen">Generate New Borders</button>
+    <button id="shareBtn" disabled data-i18n="shareBtn">Share</button>
+    <button id="realBtn" disabled data-i18n="real">Real world</button>
+    <button id="satBtn" class="toggle" type="button" aria-pressed="false" disabled data-i18n="satBtn">Satellite</button>
+    <button id="topBtn" class="toggle" type="button" aria-pressed="false" disabled data-i18n="topBtn" data-i18n-title="topHelp" title="Shows the 5 biggest cities of the selected country">Top 5 cities</button>
+  </div>
+  <button id="langBtn" type="button">Español</button>
+  <div id="status" aria-live="polite"></div>
+</header>
+
+<div id="banner" role="alert" hidden></div>
+<div id="toast" role="status" hidden></div>
+
+<main>
+  <div id="mapWrap">
+    <svg id="map" viewBox="0 0 1000 500" role="img" aria-label="World map"></svg>
+    <div id="tip" hidden></div>
+    <div id="loading">Loading…</div>
+  </div>
+  <aside>
+    <section id="detail" aria-live="polite"><h2 data-i18n="detail">Details</h2><div id="detailBody" class="hint"></div></section>
+    <section id="topSection" hidden><h2 id="topHeading"></h2><ol id="topList"></ol><p id="topMsg" class="hint" hidden></p></section>
+    <section><h2 id="listTitle"></h2><div id="list"></div></section>
+    <details>
+      <summary data-i18n="methodTitle">Method, sources and limits</summary>
+      <ul id="methodList"></ul>
+    </details>
+  </aside>
+</main>
+
+<script>
+'use strict';
+
+/* ==========================================================================
+ * NÚCLEO (lógica pura, sin DOM ni D3). Es lo que ejecutan los tests de Node.
+ * Secciones: RNG · Geometría · Ruido · Datos · Mundo (rejilla de tierra) ·
+ *            Crecimiento de países · Contornos · Capitales · Nombres · Red.
+ * ========================================================================== */
+/* @@LOGIC-START */
+const Core = (() => {
+  const EARTH_R_KM = 6371.0088;
+  const MIN_COUNT = 3, MAX_COUNT = 250;
+  const SIZE_SIGMA = 1.3;                  // dispersión lognormal de los tamaños objetivo (más alto = más desigualdad)
+  const MAX_GIANT_SHARE = 0.12;            // tope de superficie de un solo país (fracción de la tierra)
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+  /* ---------- RNG ---------- */
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const randomSeed = () => Math.floor(Math.random() * 4294967296) >>> 0;
+  const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
+
+  /* ---------- Matemática determinista ----------
+   * Math.exp/log/cos/atan2 pueden diferir en el último bit entre navegadores. La generación sólo usa
+   * +, −, ×, ÷ y sqrt (exactos según IEEE 754) para que una misma semilla dé el mismo mapa en cualquier dispositivo. */
+  const LN2 = 0.6931471805599453, TWO_PI = 2 * Math.PI;
+  function dexp(x) {
+    const n = Math.round(x / LN2), r = x - n * LN2;
+    let term = 1, sum = 1;
+    for (let k = 1; k < 14; k++) { term *= r / k; sum += term; }
+    let p = 1;
+    if (n >= 0) for (let i = 0; i < n; i++) p *= 2; else for (let i = 0; i < -n; i++) p *= 0.5;
+    return sum * p;
+  }
+  function dlog(x) {                                   // x > 0
+    let e = 0;
+    while (x >= 1) { x *= 0.5; e++; }
+    while (x < 0.5) { x *= 2; e--; }
+    const y = (x - 1) / (x + 1), y2 = y * y;
+    let sum = 0, t = y;
+    for (let k = 1; k < 40; k += 2) { sum += t / k; t *= y2; }
+    return 2 * sum + e * LN2;
+  }
+  function dsin(x) {
+    x -= TWO_PI * Math.round(x / TWO_PI);
+    let term = x, sum = x;
+    for (let k = 1; k < 14; k++) { term *= -x * x / ((2 * k) * (2 * k + 1)); sum += term; }
+    return sum;
+  }
+  function dcos(x) {
+    x -= TWO_PI * Math.round(x / TWO_PI);
+    let term = 1, sum = 1;
+    for (let k = 1; k < 14; k++) { term *= -x * x / ((2 * k - 1) * (2 * k)); sum += term; }
+    return sum;
+  }
+  const dpow = (x, p) => dexp(p * dlog(x));
+  function gauss(rng) {
+    let u = 0; while (u === 0) u = rng();
+    return Math.sqrt(-2 * dlog(u)) * dcos(TWO_PI * rng());
+  }
+
+  /* ---------- Granularidad (escala logarítmica del deslizador) ---------- */
+  function granularityToCount(v) {
+    const t = clamp(v, 0, 100) / 100;
+    return Math.round(MIN_COUNT * Math.pow(MAX_COUNT / MIN_COUNT, t));
+  }
+  function countToGranularity(n) {
+    return Math.round(100 * Math.log(clamp(n, MIN_COUNT, MAX_COUNT) / MIN_COUNT) / Math.log(MAX_COUNT / MIN_COUNT));
+  }
+
+  /* ---------- Geometría (plano lon/lat) ---------- */
+  function wrapDx(a, b) { const d = Math.abs(a - b); return d > 180 ? 360 - d : d; }
+  function dist2(lon1, lat1, lon2, lat2) { const dx = wrapDx(lon1, lon2), dy = lat1 - lat2; return dx * dx + dy * dy; }
+  function nearestSeed(sLon, sLat, lon, lat) {
+    let best = 0, bd = Infinity;
+    for (let i = 0; i < sLon.length; i++) {
+      const d = dist2(sLon[i], sLat[i], lon, lat);
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+  function ringContains(ring, lon, lat) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  // Regla par-impar: independiente del sentido de giro de los anillos (huecos incluidos).
+  function polygonContains(rings, lon, lat) {
+    let inside = false;
+    for (const r of rings) if (ringContains(r, lon, lat)) inside = !inside;
+    return inside;
+  }
+  function geometryPolygons(g) {
+    if (!g) return [];
+    if (g.type === 'Polygon') return [g.coordinates];
+    if (g.type === 'MultiPolygon') return g.coordinates;
+    return [];
+  }
+  function geometryContains(g, lon, lat) {
+    for (const p of geometryPolygons(g)) if (polygonContains(p, lon, lat)) return true;
+    return false;
+  }
+  function polygonBBox(poly) {
+    let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+    for (const ring of poly) for (const p of ring) {
+      if (p[0] < a) a = p[0]; if (p[0] > c) c = p[0];
+      if (p[1] < b) b = p[1]; if (p[1] > d) d = p[1];
+    }
+    return [a, b, c, d];
+  }
+  function geometryBBox(g) {
+    let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+    for (const poly of geometryPolygons(g)) {
+      const bb = polygonBBox(poly);
+      if (bb[0] < a) a = bb[0]; if (bb[1] < b) b = bb[1]; if (bb[2] > c) c = bb[2]; if (bb[3] > d) d = bb[3];
+    }
+    return [a, b, c, d];
+  }
+  function representativePoint(g) {
+    let bestPoly = null, bestArea = -1;
+    for (const poly of geometryPolygons(g)) {
+      const bb = polygonBBox(poly), area = (bb[2] - bb[0]) * (bb[3] - bb[1]);
+      if (area > bestArea) { bestArea = area; bestPoly = poly; }
+    }
+    if (!bestPoly) return null;
+    const bb = polygonBBox(bestPoly), center = [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2];
+    if (polygonContains(bestPoly, center[0], center[1])) return center;
+    const ring = bestPoly[0];
+    const avg = ring.reduce((s, p) => [s[0] + p[0] / ring.length, s[1] + p[1] / ring.length], [0, 0]);
+    if (polygonContains(bestPoly, avg[0], avg[1])) return avg;
+    return [ring[0][0], ring[0][1]];
+  }
+  const D2R = Math.PI / 180;
+  function toVec(lon, lat) { const p = lat * D2R, l = lon * D2R, c = dcos(p); return [c * dcos(l), c * dsin(l), dsin(p)]; }
+  function fromVec(x, y, z) { return [Math.atan2(y, x) / D2R, Math.atan2(z, Math.hypot(x, y)) / D2R]; }
+  function lonLatToXY(lon, lat, W, H) { return [((lon + 180) / 360) * W, ((90 - lat) / 180) * H]; }
+  function geometryToPath(g, W, H) {
+    const f = (v) => (Math.round(v * 10) / 10).toString();
+    let d = '';
+    for (const poly of geometryPolygons(g)) for (const ring of poly) {
+      d += ring.map((p, i) => { const [x, y] = lonLatToXY(p[0], p[1], W, H); return (i ? 'L' : 'M') + f(x) + ' ' + f(y); }).join('') + 'Z';
+    }
+    return d;
+  }
+
+  /* ---------- Ruido de valor (campo de costes del crecimiento) ---------- */
+  function hash2(ix, iy, s) {
+    let h = Math.imul(ix | 0, 374761393) ^ Math.imul(iy | 0, 668265263) ^ Math.imul(s | 0, 1274126177);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+  function vnoise(x, y, s) {
+    const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+    const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+    const a = hash2(x0, y0, s), b = hash2(x0 + 1, y0, s), c = hash2(x0, y0 + 1, s), d = hash2(x0 + 1, y0 + 1, s);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+
+  /* ---------- Datos: normalización y validación ---------- */
+  const prop = (p, keys) => { for (const k of keys) if (p[k] !== undefined && p[k] !== null && p[k] !== '') return p[k]; return undefined; };
+
+  function validateFeatureCollection(obj, label, minFeatures) {
+    if (!obj || obj.type !== 'FeatureCollection' || !Array.isArray(obj.features) || obj.features.length < minFeatures) {
+      throw new Error(label + ': unexpected file format (FeatureCollection with at least ' + minFeatures + ' items expected).');
+    }
+    return obj;
+  }
+  // name = nombre en inglés (idioma base); nameEs = nombre en español.
+  function normalizeCountries(fc) {
+    return fc.features
+      .filter((f) => f && f.geometry && geometryPolygons(f.geometry).length > 0)
+      .map((f, i) => {
+        const p = f.properties || {};
+        const nameEn = String(prop(p, ['NAME_EN', 'name_en', 'NAME', 'name', 'ADMIN', 'admin']) || 'Country ' + (i + 1));
+        return {
+          id: i,
+          a3: String(prop(p, ['ADM0_A3', 'adm0_a3', 'ISO_A3', 'iso_a3']) || ''),
+          name: nameEn, nameEn,
+          nameEs: String(prop(p, ['NAME_ES', 'name_es']) || nameEn),
+          pop: Math.max(0, Number(prop(p, ['POP_EST', 'pop_est'])) || 0),
+          continent: String(prop(p, ['CONTINENT', 'continent']) || ''),
+          capital: null,
+          geometry: f.geometry,
+        };
+      });
+  }
+  function normalizeCities(fc) {
+    return fc.features
+      .filter((f) => f && f.geometry && f.geometry.type === 'Point')
+      .map((f) => {
+        const p = f.properties || {};
+        return {
+          name: String(prop(p, ['name', 'NAME', 'nameascii']) || ''),
+          lon: Number(f.geometry.coordinates[0]),
+          lat: Number(f.geometry.coordinates[1]),
+          pop: Number(prop(p, ['pop_max', 'POP_MAX', 'pop_min', 'pop_other'])) || 0,
+          isCapital: Number(p.adm0cap) === 1 || p.featurecla === 'Admin-0 capital',
+          a3: String(prop(p, ['adm0_a3', 'ADM0_A3']) || ''),
+        };
+      })
+      .filter((c) => c.name && isFinite(c.lon) && isFinite(c.lat));
+  }
+  const isFixedTerritory = (c) => c.continent === 'Antarctica' || c.a3 === 'ATA';   // nunca se subdivide
+  const topCities = (cities, k = 5) => cities.slice().sort((a, b) => b.pop - a.pop || a.name.localeCompare(b.name)).slice(0, k);
+
+  /* ---------- Mundo: rejilla de tierra con peso demográfico ----------
+   * Cada celda de la rejilla (por defecto 0,5°) que tiene su centro dentro de un país es "tierra" y
+   * recibe la población del país repartida en proporción a su superficie real (cos φ). Alrededor de la
+   * tierra se añade un margen de celdas de océano (graph = 2) para que el recorte a la costa no deje huecos. */
+  function buildWorld({ countries, cities = [], step = 0.5 }) {
+    const nx = Math.round(360 / step), ny = Math.round(180 / step), N = nx * ny;
+    const lonC = (i) => -180 + (i + 0.5) * step, latC = (j) => 90 - (j + 0.5) * step;
+    const cellCountry = new Int16Array(N).fill(-1);
+    const counts = new Array(countries.length).fill(0);
+    const prepared = countries.map((c) => geometryPolygons(c.geometry).map((poly) => ({ poly, bb: polygonBBox(poly) })));
+
+    countries.forEach((c, ci) => {
+      const [x0, y0, x1, y1] = geometryBBox(c.geometry);
+      const i0 = Math.max(0, Math.floor((x0 + 180) / step)), i1 = Math.min(nx - 1, Math.floor((x1 + 180) / step));
+      const j0 = Math.max(0, Math.floor((90 - y1) / step)), j1 = Math.min(ny - 1, Math.floor((90 - y0) / step));
+      for (let j = j0; j <= j1; j++) {
+        const lat = latC(j);
+        for (let i = i0; i <= i1; i++) {
+          const idx = j * nx + i;
+          if (cellCountry[idx] >= 0) continue;
+          const lon = lonC(i);
+          for (const { poly, bb } of prepared[ci]) {
+            if (lon < bb[0] || lon > bb[2] || lat < bb[1] || lat > bb[3]) continue;
+            if (polygonContains(poly, lon, lat)) { cellCountry[idx] = ci; counts[ci]++; break; }
+          }
+        }
+      }
+    });
+    // Países más pequeños que una celda: una celda representativa (sin quitársela a un país de una sola celda).
+    const cellOf = (lon, lat) => clamp(Math.floor((90 - lat) / step), 0, ny - 1) * nx + clamp(Math.floor((lon + 180) / step), 0, nx - 1);
+    countries.forEach((c, ci) => {
+      if (counts[ci] > 0) return;
+      const rp = representativePoint(c.geometry);
+      if (!rp) return;
+      const idx = cellOf(rp[0], rp[1]), old = cellCountry[idx];
+      if (old >= 0 && counts[old] <= 1) return;
+      if (old >= 0) counts[old]--;
+      cellCountry[idx] = ci; counts[ci] = 1;
+    });
+
+    const rowArea = new Float64Array(ny);
+    for (let j = 0; j < ny; j++) rowArea[j] = EARTH_R_KM * EARTH_R_KM * (step * D2R) * (step * D2R) * dcos(latC(j) * D2R);
+    const landArea = new Float64Array(countries.length);
+    for (let idx = 0; idx < N; idx++) if (cellCountry[idx] >= 0) landArea[cellCountry[idx]] += rowArea[(idx / nx) | 0];
+
+    const fixedMask = countries.map(isFixedTerritory);
+    const lon = [], lat = [], cty = [], w = [], area = [], nodeCell = [];
+    const nodeOfCell = new Int32Array(N).fill(-1), graph = new Uint8Array(N);
+    for (let idx = 0; idx < N; idx++) {
+      const ci = cellCountry[idx];
+      if (ci < 0 || fixedMask[ci]) continue;
+      const j = (idx / nx) | 0, i = idx - j * nx;
+      nodeOfCell[idx] = lon.length; nodeCell.push(idx);
+      lon.push(lonC(i)); lat.push(latC(j)); cty.push(ci);
+      area.push(rowArea[j]); w.push((countries[ci].pop * rowArea[j]) / landArea[ci]);
+      graph[idx] = 1;
+    }
+    for (const idx of nodeCell) {                                  // margen de océano alrededor de la tierra
+      const j = (idx / nx) | 0, i = idx - j * nx;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        const jj = j + dj; if (jj < 0 || jj >= ny) continue;
+        const nb = jj * nx + ((i + di + nx) % nx);
+        if (cellCountry[nb] < 0 && graph[nb] === 0) graph[nb] = 2;
+      }
+    }
+    countries.forEach((c, ci) => {                                  // islotes menores que una celda
+      if (fixedMask[ci]) return;
+      for (const { bb } of prepared[ci]) {
+        const idx = cellOf((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2);
+        if (cellCountry[idx] < 0 && graph[idx] === 0) graph[idx] = 2;
+      }
+    });
+
+    countries.forEach((c) => {
+      const caps = cities.filter((x) => x.isCapital && x.a3 && x.a3 === c.a3).sort((a, b) => b.pop - a.pop);
+      c.capital = caps[0] || null;
+    });
+    const fixed = countries.filter(isFixedTerritory).map((c) => ({ id: c.id, pop: c.pop, points: counts[c.id], areaKm2: landArea[c.id] }));
+    return {
+      countries, cities, step, nx, ny, cellCountry, graph, rowArea, nodeCell, nodeOfCell,
+      lon, lat, cty, w, area, fixed,
+      nPoints: lon.length,
+      totalLandArea: area.reduce((s, a) => s + a, 0),
+      totalPop: countries.reduce((s, c) => s + (counts[c.id] ? c.pop : 0), 0),
+    };
+  }
+
+  /* ---------- Crecimiento competitivo de países ----------
+   * Cada semilla recibe un tamaño objetivo lognormal (pocos gigantes, muchos pequeños), una velocidad,
+   * una orientación/elongación y una rugosidad propias. Los países crecen a la vez sobre la rejilla
+   * (Dijkstra multi-fuente): el coste de cruzar una celda depende del país que avanza y de un campo de
+   * ruido, así que los contornos resultan alargados, con penínsulas, enclaves y archipiélagos, nunca
+   * celdas de Voronoi. Un país deja de crecer sobre tierra al alcanzar su tamaño objetivo. */
+  class MinHeap {
+    constructor(cap = 1 << 16) { this.k = new Float64Array(cap); this.a = new Int32Array(cap); this.b = new Int32Array(cap); this.n = 0; this.outK = 0; this.outA = 0; this.outB = 0; }
+    push(key, a, b) {
+      if (this.n === this.k.length) {
+        const cap = this.k.length * 2, k = new Float64Array(cap), A = new Int32Array(cap), B = new Int32Array(cap);
+        k.set(this.k); A.set(this.a); B.set(this.b); this.k = k; this.a = A; this.b = B;
+      }
+      const k = this.k, A = this.a, B = this.b;
+      let i = this.n++;
+      while (i > 0) { const p = (i - 1) >> 1; if (k[p] <= key) break; k[i] = k[p]; A[i] = A[p]; B[i] = B[p]; i = p; }
+      k[i] = key; A[i] = a; B[i] = b;
+    }
+    pop() {
+      const k = this.k, A = this.a, B = this.b;
+      this.outK = k[0]; this.outA = A[0]; this.outB = B[0];
+      const n = --this.n;
+      if (n > 0) {
+        const key = k[n], a = A[n], b = B[n];
+        let i = 0;
+        for (;;) {
+          let c = 2 * i + 1; if (c >= n) break;
+          if (c + 1 < n && k[c + 1] < k[c]) c++;
+          if (k[c] >= key) break;
+          k[i] = k[c]; A[i] = A[c]; B[i] = B[c]; i = c;
+        }
+        k[i] = key; A[i] = a; B[i] = b;
+      }
+    }
+  }
+  const NEIGH = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+  function pickSeeds(world, n, rng, candidates = 3) {
+    const N = world.nPoints, chosen = [Math.floor(rng() * N)], taken = new Set(chosen);
+    while (chosen.length < n) {
+      let best = -1, bestD = -1;
+      for (let t = 0; t < candidates; t++) {
+        const idx = Math.floor(rng() * N);
+        let md = Infinity;
+        for (const s of chosen) {
+          const d = dist2(world.lon[s], world.lat[s], world.lon[idx], world.lat[idx]);
+          if (d < md) md = d;
+          if (md <= bestD) break;
+        }
+        if (md > bestD) { bestD = md; best = idx; }
+      }
+      if (bestD <= 0) {
+        let tries = 0;
+        do { best = Math.floor(rng() * N); tries++; } while (taken.has(best) && tries < 200);
+        if (taken.has(best)) {                       // n cercano a N: se toma el primer punto libre
+          best = -1;
+          for (let i = 0; i < N; i++) if (!taken.has(i)) { best = i; break; }
+          if (best < 0) break;
+        }
+      }
+      chosen.push(best); taken.add(best);
+    }
+    return chosen;
+  }
+
+  function growRegions(world, seedNodes, rng) {
+    const { nx, ny, step, graph, rowArea } = world, N = nx * ny, n = seedNodes.length;
+    // --- parámetros propios de cada país ---
+    const wts = Array.from({ length: n }, () => dexp(SIZE_SIGMA * gauss(rng)));
+    const maxShare = Math.max(MAX_GIANT_SHARE, 2.5 / n);             // ningún país supera ~12 % de la tierra (salvo con muy pocos países)
+    for (let pass = 0; pass < 4; pass++) {
+      const s = wts.reduce((a, x) => a + x, 0);
+      for (let i = 0; i < n; i++) if (wts[i] / s > maxShare) wts[i] = maxShare * s;
+    }
+    const wsum = wts.reduce((s, x) => s + x, 0);
+    const target = wts.map((x) => (x / wsum) * world.totalLandArea * 1.15);
+    const speed = wts.map((x) => dpow(x, 0.35));
+    const theta = wts.map(() => rng() * Math.PI), cosT = theta.map(dcos), sinT = theta.map(dsin);
+    const elong = wts.map(() => (rng() < 0.3 ? 0 : 0.5 + rng() * 5.5));       // 30 % compactos, 70 % alargados (hasta 6,5:1)
+    const rough = wts.map((x) => 0.5 + rng() * 2.2 + (x < wsum / n ? 0.6 : 0));   // los pequeños, más rugosos (evita blobs redondos)
+    // --- campo de ruido compartido ---
+    const L1 = 3 + rng() * 6, sa = (rng() * 1e9) | 0, sb = (rng() * 1e9) | 0;
+    const noise = new Float32Array(N), cosRow = new Float64Array(ny);
+    for (let j = 0; j < ny; j++) cosRow[j] = dcos((90 - (j + 0.5) * step) * D2R);
+    for (let idx = 0; idx < N; idx++) {
+      if (!graph[idx]) continue;
+      const j = (idx / nx) | 0, lon = -180 + ((idx - j * nx) + 0.5) * step, lat = 90 - (j + 0.5) * step;
+      const f = (x, y, s, sc) => clamp((0.6 * vnoise(x / sc, y / sc, s) + 0.4 * vnoise(2 * x / sc, 2 * y / sc, s + 7) - 0.5) * 3, -1, 1);
+      noise[idx] = 0.55 * f(lon, lat, sa, L1) + 0.45 * f(lon, lat, sb, L1 / 3.5);
+    }
+    // --- crecimiento ---
+    const label = new Int16Array(N).fill(-1), areaOf = new Float64Array(n), heap = new MinHeap();
+    const relax = (cell, s, t0) => {
+      const j = (cell / nx) | 0, i = cell - j * nx;
+      for (let k = 0; k < 8; k++) {
+        const jj = j + NEIGH[k][1]; if (jj < 0 || jj >= ny) continue;
+        const nb = jj * nx + ((i + NEIGH[k][0] + nx) % nx);
+        if (!graph[nb] || label[nb] >= 0) continue;
+        const east = NEIGH[k][0] * step * 0.5 * (cosRow[j] + cosRow[jj]), north = -NEIGH[k][1] * step;
+        const len = Math.sqrt(east * east + north * north), c = (east * cosT[s] + north * sinT[s]) / len;
+        const cost = len * dexp(rough[s] * 0.5 * (noise[cell] + noise[nb])) / (speed[s] * (1 + elong[s] * c * c));
+        heap.push(t0 + cost, nb, s);
+      }
+    };
+    for (let s = 0; s < n; s++) {
+      const cell = world.nodeCell[seedNodes[s]];
+      label[cell] = s; areaOf[s] += rowArea[(cell / nx) | 0]; relax(cell, s, 0);
+    }
+    while (heap.n > 0) {
+      heap.pop();
+      const cell = heap.outA, s = heap.outB;
+      if (label[cell] >= 0) continue;
+      if (graph[cell] === 1) {
+        if (areaOf[s] >= target[s]) continue;                       // este país ya alcanzó su tamaño
+        areaOf[s] += rowArea[(cell / nx) | 0];
+      }
+      label[cell] = s; relax(cell, s, heap.outK);
+    }
+    // --- tierra que quedó sin dueño: inundación desde los vecinos ya asignados ---
+    const queue = [];
+    for (let idx = 0; idx < N; idx++) if (label[idx] >= 0) queue.push(idx);
+    for (let h = 0; h < queue.length; h++) {
+      const cell = queue[h], j = (cell / nx) | 0, i = cell - j * nx;
+      for (let k = 0; k < 8; k++) {
+        const jj = j + NEIGH[k][1]; if (jj < 0 || jj >= ny) continue;
+        const nb = jj * nx + ((i + NEIGH[k][0] + nx) % nx);
+        if (graph[nb] && label[nb] < 0) { label[nb] = label[cell]; queue.push(nb); }
+      }
+    }
+    // --- islas sin ninguna semilla: pasan al país con la semilla más cercana ---
+    const sLon = seedNodes.map((i) => world.lon[i]), sLat = seedNodes.map((i) => world.lat[i]);
+    for (let idx = 0; idx < N; idx++) {
+      if (!graph[idx] || label[idx] >= 0) continue;
+      const comp = [idx]; label[idx] = -2;
+      for (let h = 0; h < comp.length; h++) {
+        const cell = comp[h], j = (cell / nx) | 0, i = cell - j * nx;
+        for (let k = 0; k < 8; k++) {
+          const jj = j + NEIGH[k][1]; if (jj < 0 || jj >= ny) continue;
+          const nb = jj * nx + ((i + NEIGH[k][0] + nx) % nx);
+          if (graph[nb] && label[nb] === -1) { label[nb] = -2; comp.push(nb); }
+        }
+      }
+      const j0 = (idx / nx) | 0, owner = nearestSeed(sLon, sLat, -180 + ((idx - j0 * nx) + 0.5) * step, 90 - (j0 + 0.5) * step);
+      for (const c of comp) label[c] = owner;
+    }
+    return label;
+  }
+
+  function generate(world, opts) {
+    const o = Object.assign({ count: 40, seed: 1, capitalMode: 'populous', avoid: null }, opts || {});
+    const rng = mulberry32(o.seed);
+    const n = clamp(Math.round(o.count), 1, world.nPoints);
+    const seedNodes = pickSeeds(world, n, rng);
+    const labels = growRegions(world, seedNodes, rng);
+
+    const acc = seedNodes.map(() => ({ pop: 0, cnt: 0, area: 0, v: [0, 0, 0], comp: new Map() }));
+    for (let i = 0; i < world.nPoints; i++) {
+      const a = acc[labels[world.nodeCell[i]]];
+      const v = toVec(world.lon[i], world.lat[i]), m = world.area[i];
+      a.pop += world.w[i]; a.cnt++; a.area += m;
+      a.v[0] += v[0] * m; a.v[1] += v[1] * m; a.v[2] += v[2] * m;
+      a.comp.set(world.cty[i], (a.comp.get(world.cty[i]) || 0) + m);
+    }
+    const cells = acc.map((a, k) => {
+      const comp = [...a.comp.entries()].sort((x, y) => y[1] - x[1]);
+      const cont = new Map();
+      for (const [ci, m] of comp) { const ct = world.countries[ci].continent; cont.set(ct, (cont.get(ct) || 0) + m); }
+      const sLon = world.lon[seedNodes[k]], sLat = world.lat[seedNodes[k]];
+      const norm = Math.sqrt(a.v[0] * a.v[0] + a.v[1] * a.v[1] + a.v[2] * a.v[2]);
+      const [cLon, cLat] = norm > 1e-9 ? fromVec(a.v[0], a.v[1], a.v[2]) : [sLon, sLat];
+      return {
+        id: k, name: '', key: '', fixed: false,
+        seed: { lon: sLon, lat: sLat }, centroid: { lon: cLon, lat: cLat },
+        pop: a.pop, points: a.cnt, areaKm2: a.area,
+        composition: comp.slice(0, 3).map(([ci, m]) => ({ id: ci, name: world.countries[ci].name, share: m / a.area })),
+        continent: [...cont.entries()].sort((x, y) => y[1] - x[1])[0][0],
+        capital: null,
+      };
+    });
+
+    const gen = { seed: o.seed >>> 0, count: n, capitalMode: o.capitalMode, cells, labels, nx: world.nx, ny: world.ny, step: world.step };
+    assignCapitals(world, gen, cells, o.capitalMode, rng);
+    const names = generateNames(cells, world.countries, rng, o.avoid);
+    cells.forEach((c, i) => { c.name = names[i].name; c.key = names[i].key; });
+
+    // Territorios fijos (Antártida): intactos, sin nombre generado ni capital.
+    for (const f of world.fixed) {
+      const country = world.countries[f.id], rp = representativePoint(country.geometry) || [0, -90];
+      cells.push({
+        id: cells.length, name: country.name, key: '', fixed: true, countryId: f.id,
+        seed: { lon: rp[0], lat: rp[1] }, centroid: { lon: rp[0], lat: rp[1] },
+        pop: f.pop, points: f.points, areaKm2: f.areaKm2,
+        composition: [{ id: f.id, name: country.name, share: 1 }], continent: country.continent, capital: null,
+      });
+    }
+    gen.totalPop = cells.reduce((s, c) => s + c.pop, 0);
+    gen.totalAreaKm2 = cells.filter((c) => !c.fixed).reduce((s, c) => s + c.areaKm2, 0);
+    return gen;
+  }
+
+  // Índice (en gen.cells) del país generado que contiene el punto lon/lat; busca en un entorno si cae en el mar.
+  function locate(world, gen, lon, lat) {
+    const { nx, ny, step } = world;
+    const i = clamp(Math.floor((lon + 180) / step), 0, nx - 1), j = clamp(Math.floor((90 - lat) / step), 0, ny - 1);
+    for (let r = 0; r <= 6; r++) {
+      for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
+        if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue;
+        const jj = j + dj; if (jj < 0 || jj >= ny) continue;
+        const l = gen.labels[jj * nx + ((i + di + nx) % nx)];
+        if (l >= 0) return l;
+      }
+    }
+    let best = -1, bd = Infinity;
+    gen.cells.forEach((c, k) => { if (c.fixed) return; const d = dist2(c.seed.lon, c.seed.lat, lon, lat); if (d < bd) { bd = d; best = k; } });
+    return best;
+  }
+
+  // Las `limit` mayores ciudades (del conjunto de datos) de un territorio: real (gen = null, k = id de país) o generado.
+  function citiesIn(world, gen, k, limit = 5) {
+    let list;
+    if (!gen) {
+      const c = world.countries[k];
+      list = c && c.a3 ? world.cities.filter((x) => x.a3 === c.a3) : [];
+    } else if (gen.cells[k] && gen.cells[k].fixed) {
+      list = [];
+    } else {
+      if (!gen.cityCell) gen.cityCell = world.cities.map((c) => locate(world, gen, c.lon, c.lat));
+      list = world.cities.filter((c, i) => gen.cityCell[i] === k);
+    }
+    return list.sort((a, b) => b.pop - a.pop || a.name.localeCompare(b.name)).slice(0, limit);
+  }
+
+  /* ---------- Código para compartir: "n-semilla-capital" (p/c/r) ---------- */
+  const CAP_LETTER = { populous: 'p', central: 'c', random: 'r' }, LETTER_CAP = { p: 'populous', c: 'central', r: 'random' };
+  const makeShareCode = (gen) => gen.count + '-' + gen.seed + '-' + (CAP_LETTER[gen.capitalMode] || 'p');
+  function parseShareCode(s) {
+    const m = /^\s*(\d{1,3})-(\d{1,10})(?:-([pcr]))?\s*$/i.exec(String(s));
+    if (!m) return null;
+    const count = Number(m[1]), seed = Number(m[2]);
+    if (count < MIN_COUNT || count > MAX_COUNT || seed > 4294967295) return null;
+    return { count, seed, capitalMode: LETTER_CAP[(m[3] || 'p').toLowerCase()] };
+  }
+
+  /* ---------- Contornos de las regiones (vector) ----------
+   * Recorre los bordes de las celdas de la rejilla, une los segmentos en anillos y los suaviza con
+   * cortes de esquina (Chaikin). Devuelve, por región, una lista de anillos [[lon,lat],...]; se rellenan
+   * con regla par-impar (los huecos son anillos de sentido contrario). */
+  function traceRegions(labels, nx, ny, nLabels, { smooth = 2, step = 1 } = {}) {
+    const W1 = nx + 1, edges = Array.from({ length: nLabels }, () => []);
+    const push = (L, a, b) => { if (L >= 0 && L < nLabels) edges[L].push(a, b); };
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const L = labels[j * nx + i]; if (L < 0 || L >= nLabels) continue;
+      const tl = j * W1 + i, tr = tl + 1, bl = tl + W1, br = bl + 1;
+      if (j === 0 || labels[(j - 1) * nx + i] !== L) push(L, tl, tr);          // lado superior (hacia el este)
+      if (i === nx - 1 || labels[j * nx + i + 1] !== L) push(L, tr, br);       // lado derecho (hacia el sur)
+      if (j === ny - 1 || labels[(j + 1) * nx + i] !== L) push(L, br, bl);     // lado inferior (hacia el oeste)
+      if (i === 0 || labels[j * nx + i - 1] !== L) push(L, bl, tl);            // lado izquierdo (hacia el norte)
+    }
+    const xy = (v) => [v % W1, (v / W1) | 0];
+    return edges.map((E) => {
+      const m = E.length / 2, out = new Map(), used = new Uint8Array(m), rings = [];
+      for (let e = 0; e < m; e++) { const a = E[2 * e]; if (!out.has(a)) out.set(a, []); out.get(a).push(e); }
+      for (let e0 = 0; e0 < m; e0++) {
+        if (used[e0]) continue;
+        const loop = []; let e = e0;
+        for (;;) {
+          used[e] = 1; loop.push(E[2 * e]);
+          const end = E[2 * e + 1];
+          const cand = (out.get(end) || []).filter((c) => !used[c] || c === e0);
+          if (!cand.length) break;
+          let nxt = cand[0];
+          if (cand.length > 1) {                                                // vértice de silla: girar a la derecha
+            const [ax, ay] = xy(end), [bx, by] = xy(E[2 * e]);
+            let bestCross = -Infinity;
+            for (const c of cand) {
+              const [cx, cy] = xy(E[2 * c + 1]), cr = (ax - bx) * (cy - ay) - (ay - by) * (cx - ax);
+              if (cr > bestCross) { bestCross = cr; nxt = c; }
+            }
+          }
+          if (nxt === e0) break;
+          e = nxt;
+        }
+        let pts = loop.map(xy);
+        pts = pts.filter((p, k) => {                                            // quitar puntos colineales
+          const a = pts[(k + pts.length - 1) % pts.length], b = pts[(k + 1) % pts.length];
+          return (p[0] - a[0]) * (b[1] - p[1]) - (p[1] - a[1]) * (b[0] - p[0]) !== 0;
+        });
+        if (pts.length < 3) continue;
+        for (let it = 0; it < smooth; it++) {
+          const next = [];
+          for (let k = 0; k < pts.length; k++) {
+            const a = pts[k], b = pts[(k + 1) % pts.length];
+            next.push([0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]], [0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1]]);
+          }
+          pts = next;
+        }
+        rings.push(pts.map(([x, y]) => [-180 + x * step, 90 - y * step]));
+      }
+      return rings;
+    });
+  }
+
+  /* ---------- Capitales ---------- */
+  function selectCapital(candidates, cell, mode, rng) {
+    const byPop = candidates.slice().sort((a, b) => b.pop - a.pop || a.name.localeCompare(b.name));
+    if (mode === 'central') {
+      let best = null, bd = Infinity;
+      for (const c of candidates) {
+        const d = dist2(c.lon, c.lat, cell.centroid.lon, cell.centroid.lat);
+        if (d < bd) { bd = d; best = c; }
+      }
+      return best;
+    }
+    if (mode === 'random') return pick(rng, byPop.slice(0, 3));
+    return byPop[0];
+  }
+  function assignCapitals(world, gen, cells, mode, rng) {
+    const byCell = cells.map(() => []);
+    for (const city of world.cities) { const k = locate(world, gen, city.lon, city.lat); if (k >= 0 && k < cells.length && !cells[k].fixed) byCell[k].push(city); }
+    const used = new Set();
+    const info = (c, fallback) => ({ name: c.name, lon: c.lon, lat: c.lat, pop: c.pop, fallback });
+    cells.forEach((cell, k) => {
+      if (!byCell[k].length) return;
+      const chosen = selectCapital(byCell[k], cell, mode, rng);
+      used.add(chosen);
+      cell.capital = info(chosen, false);
+    });
+    // Territorios sin ninguna ciudad del conjunto: ciudad libre más cercana (marcada como tal).
+    cells.forEach((cell) => {
+      if (cell.capital) return;
+      let best = null, bd = Infinity;
+      for (const city of world.cities) {
+        if (used.has(city)) continue;
+        const d = dist2(city.lon, city.lat, cell.centroid.lon, cell.centroid.lat);
+        if (d < bd) { bd = d; best = city; }
+      }
+      if (best) { used.add(best); cell.capital = info(best, true); }
+    });
+  }
+
+  /* ---------- Nombres ----------
+   * Cada nombre se construye con el comienzo (3-7 letras, a límite de sílaba) del país que más aporta al
+   * territorio y el final del segundo aportante (≥ 12 % de la superficie), p. ej. Argentina + Chile →
+   * "Argentile". Un territorio que es parte de un solo país conserva su comienzo y recibe una terminación.
+   * Todo candidato debe pasar una comprobación fonotáctica (grupos de consonantes y vocales pronunciables). */
+  const STOP = new Set(['de', 'del', 'la', 'las', 'los', 'el', 'y', 'e', 'of', 'the', 'and', 'rep', 'republica', 'democratica',
+    'dem', 'estados', 'unidos', 'islas', 'isla', 'reino', 'nueva', 'nuevo', 'unida', 'federal', 'sur', 'norte',
+    'republic', 'democratic', 'kingdom', 'islands', 'island', 'states', 'united', 'new', 'south', 'north', 'federation',
+    'federated', 'saint', 'st', 'northern', 'southern', 'people', 'peoples', 'popular', 'islamic', 'commonwealth', 'sultanate',
+    'emirates', 'state', 'plurinational', 'bolivarian', 'socialist', 'central', 'western', 'eastern', 'equatorial', 'arab']);
+  const ENDINGS = ['ia', 'ora', 'ana', 'ina', 'ona', 'ica', 'oria', 'onia', 'avia', 'ara', 'ura', 'an', 'ar', 'on', 'os', 'el', 'ik', 'ul', 'ium', 'ella'];
+  const ENDINGS_BY_CONTINENT = {
+    'Asia': ['stan', 'abad', 'pur', 'istan'], 'Europe': ['land', 'mark', 'ovia', 'enia'], 'Africa': ['ania', 'ambia', 'ola'],
+    'Oceania': ['nesia', 'ora', 'oa'], 'North America': ['ica', 'ado', 'ana'], 'South America': ['ina', 'ador', 'ara'],
+  };
+  const CV = ['ra', 'ne', 'lo', 'mi', 'ta', 'vo', 'sa', 'ke', 'du', 'ni', 'ba', 'le', 'ri', 'go', 'ma', 'po', 'ti', 've', 'no', 'si'];
+
+  const stripAccents = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const normalizeName = (s) => stripAccents(String(s)).toLowerCase().replace(/[^a-z]+/g, ' ').trim();
+  const flatName = (s) => normalizeName(s).replace(/ /g, '');
+  const isV = (ch) => 'aeiou'.indexOf(ch) >= 0;
+  // Raíz de un nombre de país: palabra más larga sin palabras vacías; la 'y' no inicial pasa a 'i' (Libya → libia).
+  function rootWord(name) {
+    const words = normalizeName(name).split(' ').filter(Boolean);
+    const good = words.filter((w) => w.length >= 3 && !STOP.has(w));
+    const w = (good.length ? good : words).sort((a, b) => b.length - a.length)[0] || '';
+    return w.charAt(0) + w.slice(1).replace(/y/g, 'i');
+  }
+  function syllabify(word) {
+    const w = flatName(word);
+    if (!w) return [];
+    return w.match(/[^aeiouy]*[aeiouy]+(?:[^aeiouy]*$|[^aeiouy](?=[^aeiouy]))?/g) || [w];
+  }
+
+  const ONSET2 = new Set('bl br cl cr dr fl fr gl gr pl pr tr kr kl sc sk sp st sm sn sl ch sh th ph bh dh gh kh zh sw tw wr wh kn'.split(' '));
+  const ONSET3 = new Set(['str', 'scr', 'spr', 'spl', 'sch']);
+  const CODA1 = new Set('bcdfgklmnprstxz'.split(''));
+  const CODA2 = new Set('nd nt ng nk ns nc rd rt rm rn rs rk rb rg ld lt ls lm lk lp mp mb st sk sp ft ct pt'.split(' '));
+  const FINAL1 = new Set('nrslmdktxz'.split(''));
+  const FINAL2 = new Set('nd nt ng nk rd rt rk ld lt st sk'.split(' '));
+  const VV = new Set('ia ie io iu ua ue ui uo ai ei oi au eu ea oa ee oo'.split(' '));
+  function isPronounceable(w) {
+    if (!/^[a-z]+$/.test(w) || w.length < 4 || w.length > 11 || /q(?!u)/.test(w)) return false;
+    const runs = w.match(/[aeiou]+|[^aeiou]+/g);
+    let vowelGroups = 0;
+    for (let k = 0; k < runs.length; k++) {
+      const run = runs[k];
+      if (isV(run[0])) {
+        vowelGroups++;
+        if (run.length > 2 || (run.length === 2 && !VV.has(run))) return false;
+      } else if (k === 0) {
+        if (!(run.length === 1 || ONSET2.has(run) || ONSET3.has(run))) return false;
+      } else if (k === runs.length - 1) {
+        if (!(FINAL1.has(run) || FINAL2.has(run))) return false;
+      } else {
+        let ok = false;       // grupo interior = coda + ataque de la sílaba siguiente
+        for (let s = 0; s <= run.length && !ok; s++) {
+          const coda = run.slice(0, s), onset = run.slice(s);
+          const codaOk = coda === '' || (coda.length === 1 && CODA1.has(coda)) || CODA2.has(coda);
+          const onsetOk = onset === '' || onset.length === 1 || ONSET2.has(onset) || ONSET3.has(onset);
+          ok = codaOk && onsetOk && !(coda === '' && onset === '');
+        }
+        if (!ok) return false;
+      }
+    }
+    return vowelGroups >= 2;
+  }
+  const isPlausible = isPronounceable;   // alias retrocompatible
+  const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  function headsOf(syl, minLen = 3, maxLen = 7) {
+    const out = []; let acc = '';
+    for (const s of syl) { acc += s; if (acc.length >= minLen && acc.length <= maxLen) out.push(acc); }
+    return out;
+  }
+  function tailsOf(syl, minLen = 2, maxLen = 5) {
+    const out = []; let acc = '';
+    for (let k = syl.length - 1; k >= 0; k--) { acc = syl[k] + acc; if (acc.length >= minLen && acc.length <= maxLen) out.push(acc); }
+    return out;
+  }
+  function joinParts(head, tail) {
+    if (isV(head[head.length - 1]) && isV(tail[0])) { if (tail.length > 2) tail = tail.slice(1); else head = head.slice(0, -1); }
+    return head + tail;
+  }
+  const maxHeadLen = (root) => clamp(root.length - 2, 3, 5);    // el comienzo nunca copia casi todo el nombre original
+  function headsFor(src) {                                       // comienzos posibles; raíces muy cortas se usan enteras
+    const heads = headsOf(src.syl, 3, maxHeadLen(src.root));
+    return heads.length ? heads : [src.root.length <= 6 ? src.root : src.root.slice(0, 3)];
+  }
+  function blendPool(srcs) {
+    const pool = [], list = srcs.slice(0, 3);
+    for (const X of list) for (const Y of list) {
+      if (X === Y || X.root === Y.root) continue;
+      for (const h of headsFor(X)) for (const t of tailsOf(Y.syl, 2, clamp(Y.root.length - 2, 2, 4))) {
+        const name = joinParts(h, t);
+        if (name.length > 10) continue;
+        const alt = isV(h[h.length - 1]) !== isV(t[0]);
+        pool.push({ name, score: (alt ? 2 : 0) + (name.length >= 6 && name.length <= 9 ? 1 : 0) + (X === list[0] ? 1 : 0) });
+      }
+    }
+    return pool;
+  }
+  function singlePool(src, continent, extra) {
+    const endings = ENDINGS.concat(ENDINGS_BY_CONTINENT[continent] || []);
+    const pool = [], add = (name) => { if (name.length <= 9) pool.push({ name, score: name.length >= 5 && name.length <= 8 ? 1 : 0 }); };
+    for (const h of headsFor(src)) for (const e of endings) {
+      add(joinParts(h, e));
+      for (const cv of CV) { add(joinParts(h + cv, e)); if (extra) for (const cv2 of CV) add(joinParts(h + cv + cv2, e)); }
+    }
+    return pool;
+  }
+  function pickName(rng, srcs, continent, used) {
+    const ok = (p) => isPronounceable(p.name) && !used.has(p.name);
+    const choose = (cands) => { const best = Math.max(...cands.map((c) => c.score)); return pick(rng, cands.filter((c) => c.score === best)).name; };
+    let cands = blendPool(srcs).filter(ok);
+    if (cands.length) return choose(cands);
+    for (const extra of [false, true]) {
+      cands = singlePool(srcs[0] || { root: 'norda', syl: ['nor', 'da'] }, continent, extra).filter(ok);
+      if (cands.length) return choose(cands);
+    }
+    const base = srcs[0] ? srcs[0].root.slice(0, 3) : 'nor';      // último recurso: raíz + sílabas; termina siempre
+    let key = '', tries = 0;
+    do {
+      const stem = tries < 30 ? base + pick(rng, CV) : tries < 60 ? base.slice(0, 2) + pick(rng, CV) : pick(rng, CV) + pick(rng, CV) + (tries > 400 ? pick(rng, CV) : '');
+      key = joinParts(stem, pick(rng, ['an', 'on', 'ia', 'el', 'or']));
+      tries++;
+    } while ((!isPronounceable(key) || used.has(key)) && tries < 5000);
+    return key;
+  }
+
+  function generateNames(cells, countries, rng, avoid) {
+    const used = new Set(avoid || []);
+    for (const c of countries) {
+      for (const n of [c.name, c.nameEn || '', c.nameEs || '']) { used.add(flatName(n)); used.add(rootWord(n)); }
+    }
+    const cache = new Map();
+    const srcOf = (ci) => {
+      if (!cache.has(ci)) { const root = rootWord(countries[ci].name); cache.set(ci, { root, syl: syllabify(root) }); }
+      return cache.get(ci);
+    };
+    return cells.map((cell) => {
+      const srcs = cell.composition.filter((c, k) => k === 0 || c.share >= 0.12).map((c) => srcOf(c.id)).filter((s) => s.syl.length);
+      const key = pickName(rng, srcs, cell.continent, used);
+      used.add(key);
+      return { key, name: capitalize(key) };
+    });
+  }
+
+  /* ---------- Carga de red con alternativas, tiempo límite y errores claros ---------- */
+  async function loadFirstAvailable(urls, { fetchFn = (typeof fetch === 'function' ? fetch : null), timeoutMs = 20000 } = {}) {
+    const errors = [];
+    for (const url of urls) {
+      const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : null;
+      try {
+        if (!fetchFn) throw new Error('fetch not available');
+        const res = await fetchFn(url, ctl ? { signal: ctl.signal } : undefined);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return { data: await res.json(), url };
+      } catch (e) {
+        errors.push(url + ' → ' + (e && e.name === 'AbortError' ? 'timeout' : (e && e.message) || String(e)));
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+    const err = new Error('No data source could be loaded.');
+    err.name = 'DataLoadError';
+    err.details = errors;
+    throw err;
+  }
+
+  return {
+    EARTH_R_KM, MIN_COUNT, MAX_COUNT, SIZE_SIGMA,
+    mulberry32, randomSeed, granularityToCount, countToGranularity,
+    wrapDx, dist2, nearestSeed, ringContains, polygonContains, geometryContains, geometryBBox, geometryPolygons,
+    representativePoint, lonLatToXY, geometryToPath,
+    validateFeatureCollection, normalizeCountries, normalizeCities, isFixedTerritory, topCities,
+    dexp, dlog, dsin, dcos, dpow, makeShareCode, parseShareCode, citiesIn,
+    buildWorld, pickSeeds, growRegions, generate, locate, traceRegions, selectCapital, assignCapitals,
+    normalizeName, rootWord, syllabify, isPronounceable, isPlausible, generateNames,
+    loadFirstAvailable,
+  };
+})();
+/* @@LOGIC-END */
+
+/* ==========================================================================
+ * TEXTOS (inglés por defecto, español opcional)
+ * ========================================================================== */
+const I18N = {
+  en: {
+    title: 'Border Randomizer', granularity: 'Granularity', countriesUnit: 'countries', capitalLabel: 'Capital',
+    capPopulous: 'Most populous city', capCentral: 'Most central city', capRandom: 'Random among top 3',
+    seed: 'Seed', seedPh: 'random or code', gen: 'Generate New Borders', shareBtn: 'Share', real: 'Real world', langBtn: 'Español', detail: 'Details',
+    satBtn: 'Satellite', topBtn: 'Top 5 cities', topHelp: 'Shows the 5 biggest cities of the selected country',
+    topFor: (n) => `Biggest cities in ${n}`, topPick: 'Select a country to see its biggest cities.', topNone: 'No cities from the dataset in this territory.',
+    shareTitle: 'Border Randomizer', shareText: (code) => `Check out this world map with new borders! Code: ${code}`,
+    shareCopied: (u) => `Link copied: ${u}`, shareCopiedFile: (c) => `This page is a local file, so a link would not work for others. Code copied: ${c}. Send it with the page and paste it into the Seed box.`,
+    shareManual: 'Copy this link:', shareLoaded: (c) => `Loaded map ${c}.`, shareBad: 'That seed/code is not valid. Use digits (seed) or n-seed-capital, e.g. 40-123456-p.',
+    hint: 'Hover or click a country.', methodTitle: 'Method, sources and limits', mapLabel: 'World political map',
+    loadingData: 'Loading borders and cities…', loadingModel: 'Preparing land and population model…', loadFail: 'Could not load the map',
+    listReal: (n) => `Real countries (${n})`, listGen: (n) => `Generated countries (${n})`,
+    capital: 'Capital', population: 'Population', area: 'Area', territory: 'Territory',
+    noteReal: 'Real data (Natural Earth population estimate).',
+    noteFallback: '* No city from the dataset lies inside this territory: the nearest unused city is used.',
+    noteFixed: 'Antarctica is never subdivided.',
+    statusReal: (n, pop) => `Real world · ${n} countries (Natural Earth 110m) · total population ${pop}`,
+    statusGen: (n, seed, pop, fx) => `Generated planet · ${n} countries${fx ? ' + Antarctica (unchanged)' : ''} · seed ${seed} · total population ≈ ${pop} (world total preserved)`,
+    retry: 'Retry', techDetail: 'Technical details',
+    errD3: 'The D3 library could not be loaded from the CDNs.',
+    errData: (m) => `${m} Check your internet connection.`,
+    errUnexpected: (m) => `Unexpected error: ${m}`,
+    errGen: (m) => `Could not generate the planet: ${m}`,
+    warnCities: (m) => `The cities dataset could not be loaded (${m}). Without cities there are no capitals: they will show as "—".`,
+    warnSat: 'The satellite imagery could not be loaded (NASA GIBS). Check your connection and try again.',
+    method: [
+      '<b>Initial map:</b> Natural Earth 110m (public domain): countries and population (POP_EST).',
+      '<b>Land grid:</b> the world is rasterized into 0.5° cells; each land cell gets its original country\'s population in proportion to its true area (uniform density inside each original country — a rough approximation). World total is preserved.',
+      '<b>Free-form countries:</b> N seeds are placed on land and the countries grow simultaneously across the grid. Each one has its own target size (log-normal: a few giants, many small and tiny ones), speed, preferred direction (elongated or compact) and roughness, and a noise field makes crossing terrain cheap or costly. The result is peninsulas, enclaves, long thin strips and island groups — never regular cells. Borders are traced from the grid and smoothed. Antarctica is never subdivided.',
+      '<b>Capitals:</b> Natural Earth 50m populated places. Selectable criterion: most populous, most central or random among the top 3. If a territory has no city in the dataset, the nearest unused city is used and flagged.',
+      '<b>Names:</b> built from the start of the main contributing country and the end of the second one (≥ 12% of the territory), cut at syllable boundaries (Argentina + Chile → Argentile); territories inside a single country keep its beginning plus an ending. Every name passes a pronounceability check and never matches an original name or repeats.',
+      '<b>Satellite:</b> NASA GIBS Blue Marble imagery (equirectangular) under semi-transparent countries. <b>Top 5 cities:</b> the five largest cities of the selected country (fewer if it is small). <b>Share:</b> the map is fully determined by country count, seed and capital rule, so a link or a code like 40-123456-p reproduces it on any device (the generator avoids browser-dependent math).',
+      '<b>Limits:</b> 110m resolution (tiny countries use one grid cell); the grid is 0.5° so very small countries are blocky; data and imagery are downloaded from CDNs.',
+    ],
+  },
+  es: {
+    title: 'Randomizador de fronteras', granularity: 'Granularidad', countriesUnit: 'países', capitalLabel: 'Capital',
+    capPopulous: 'Ciudad más poblada', capCentral: 'Ciudad más central', capRandom: 'Azar entre las 3 más pobladas',
+    seed: 'Semilla', seedPh: 'aleatoria o código', gen: 'Generar nuevas fronteras', shareBtn: 'Compartir', real: 'Mundo real', langBtn: 'English', detail: 'Detalle',
+    satBtn: 'Satélite', topBtn: 'Top 5 ciudades', topHelp: 'Muestra las 5 mayores ciudades del país seleccionado',
+    topFor: (n) => `Mayores ciudades de ${n}`, topPick: 'Seleccioná un país para ver sus mayores ciudades.', topNone: 'No hay ciudades del conjunto de datos en este territorio.',
+    shareTitle: 'Randomizador de fronteras', shareText: (code) => `¡Mirá este mapa del mundo con fronteras nuevas! Código: ${code}`,
+    shareCopied: (u) => `Enlace copiado: ${u}`, shareCopiedFile: (c) => `Esta página es un archivo local, así que un enlace no serviría a otras personas. Código copiado: ${c}. Envialo junto con la página y pegalo en el cuadro Semilla.`,
+    shareManual: 'Copiá este enlace:', shareLoaded: (c) => `Mapa ${c} cargado.`, shareBad: 'Semilla/código no válido. Usá dígitos (semilla) o n-semilla-capital, p. ej. 40-123456-p.',
+    hint: 'Pasá el cursor o hacé clic sobre un país.', methodTitle: 'Método, fuentes y límites', mapLabel: 'Planisferio político',
+    loadingData: 'Cargando fronteras y ciudades…', loadingModel: 'Preparando el modelo de tierra firme y población…', loadFail: 'No se pudo cargar el mapa',
+    listReal: (n) => `Países reales (${n})`, listGen: (n) => `Países generados (${n})`,
+    capital: 'Capital', population: 'Población', area: 'Superficie', territory: 'Territorio',
+    noteReal: 'Dato real (estimación de población de Natural Earth).',
+    noteFallback: '* Sin ciudades del conjunto de datos dentro del territorio: se usa la ciudad libre más cercana.',
+    noteFixed: 'La Antártida nunca se subdivide.',
+    statusReal: (n, pop) => `Mundo real · ${n} países (Natural Earth 110m) · población total ${pop}`,
+    statusGen: (n, seed, pop, fx) => `Planeta generado · ${n} países${fx ? ' + Antártida (sin cambios)' : ''} · semilla ${seed} · población total ≈ ${pop} (se conserva la del mundo real)`,
+    retry: 'Reintentar', techDetail: 'Detalle técnico',
+    errD3: 'No se pudo cargar la librería D3 desde los CDN.',
+    errData: (m) => `${m} Revisá tu conexión a internet.`,
+    errUnexpected: (m) => `Error inesperado: ${m}`,
+    errGen: (m) => `No se pudo generar el planeta: ${m}`,
+    warnCities: (m) => `No se pudo cargar el conjunto de ciudades (${m}). Sin ciudades no hay capitales: se mostrarán como "—".`,
+    warnSat: 'No se pudo cargar la imagen satelital (NASA GIBS). Revisá tu conexión e intentá de nuevo.',
+    method: [
+      '<b>Mapa inicial:</b> Natural Earth 110m (dominio público): países y población (POP_EST).',
+      '<b>Rejilla de tierra:</b> el mundo se rasteriza en celdas de 0,5°; cada celda de tierra recibe la población de su país original en proporción a su superficie real (densidad uniforme dentro de cada país original: aproximación gruesa). El total mundial se conserva.',
+      '<b>Países de forma libre:</b> se colocan N semillas sobre tierra y los países crecen a la vez sobre la rejilla. Cada uno tiene su propio tamaño objetivo (lognormal: pocos gigantes, muchos pequeños y diminutos), velocidad, dirección preferida (alargado o compacto) y rugosidad, y un campo de ruido hace más barato o más caro atravesar cada zona. El resultado son penínsulas, enclaves, franjas largas y finas y archipiélagos, nunca celdas regulares. Las fronteras se trazan desde la rejilla y se suavizan. La Antártida nunca se subdivide.',
+      '<b>Capitales:</b> Natural Earth 50m, lugares poblados. Criterio elegible: más poblada, más central o azar entre las 3 más pobladas. Si un territorio no contiene ninguna ciudad del conjunto, se usa la ciudad libre más cercana y se marca.',
+      '<b>Nombres:</b> comienzo del país que más aporta al territorio más el final del segundo (≥ 12 % del territorio), cortados en límite de sílaba (Argentina + Chile → Argentile); un territorio dentro de un solo país conserva su comienzo más una terminación. Todo nombre pasa una comprobación de pronunciabilidad y nunca coincide con uno original ni se repite.',
+      '<b>Satélite:</b> imagen Blue Marble de NASA GIBS (equirectangular) bajo los países semitransparentes. <b>Top 5 ciudades:</b> las cinco mayores ciudades del país seleccionado (menos si es pequeño). <b>Compartir:</b> el mapa queda totalmente determinado por la cantidad de países, la semilla y el criterio de capital, así que un enlace o un código como 40-123456-p lo reproduce en cualquier dispositivo (el generador evita funciones matemáticas que varían entre navegadores).',
+      '<b>Límites:</b> resolución 110m (los países diminutos usan una sola celda de la rejilla); con rejilla de 0,5° los países muy pequeños se ven angulosos; los datos y la imagen se descargan de CDN.',
+    ],
+  },
+};
+
+/* ==========================================================================
+ * APLICACIÓN (DOM + D3). Sólo presentación y cableado de eventos.
+ * ========================================================================== */
+(() => {
+  const W = 1000, H = 500;
+  const DATA_BASE = 'natural-earth-vector';
+  const URLS = {
+    countries: [
+      'https://cdn.jsdelivr.net/gh/nvkelso/' + DATA_BASE + '@v5.1.2/geojson/ne_110m_admin_0_countries.geojson',
+      'https://raw.githubusercontent.com/nvkelso/' + DATA_BASE + '/master/geojson/ne_110m_admin_0_countries.geojson',
+    ],
+    cities: [
+      'https://cdn.jsdelivr.net/gh/nvkelso/' + DATA_BASE + '@v5.1.2/geojson/ne_50m_populated_places_simple.geojson',
+      'https://raw.githubusercontent.com/nvkelso/' + DATA_BASE + '/master/geojson/ne_50m_populated_places_simple.geojson',
+    ],
+  };
+  // Imagen satelital equirectangular (NASA GIBS, WMS EPSG:4326): coincide con la proyección del mapa.
+  const GIBS = 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&STYLES=&FORMAT=image/jpeg&CRS=EPSG:4326&BBOX=-90,-180,90,180';
+  const SAT_URLS = [
+    GIBS + '&LAYERS=BlueMarble_NextGeneration&WIDTH=4096&HEIGHT=2048',
+    GIBS + '&LAYERS=BlueMarble_NextGeneration&WIDTH=2048&HEIGHT=1024',
+    GIBS + '&LAYERS=BlueMarble_ShadedRelief_Bathymetry&WIDTH=2048&HEIGHT=1024',
+  ];
+
+  const $ = (id) => document.getElementById(id);
+  const el = { gran: $('gran'), countOut: $('countOut'), capMode: $('capMode'), seed: $('seedInput'), gen: $('genBtn'),
+    real: $('realBtn'), sat: $('satBtn'), top: $('topBtn'), lang: $('langBtn'), status: $('status'), banner: $('banner'),
+    map: $('map'), tip: $('tip'), wrap: $('mapWrap'), loading: $('loading'), detail: $('detailBody'), list: $('list'),
+    listTitle: $('listTitle'), method: $('methodList'), topSection: $('topSection'), topList: $('topList'), topHeading: $('topHeading'), topMsg: $('topMsg'),
+    share: $('shareBtn'), toast: $('toast') };
+
+  const state = { world: null, mode: 'real', gen: null, selected: null, prevKeys: new Set(), ready: false, k: 1, lang: 'en',
+    banner: null, loadingKey: 'loadingData', sat: false, satLoaded: false, top: false };
+  let countryEls = [], cellEls = [], zoomG, satImg, countriesG, cellsG, capG, hoverG, topG, zoomBehavior, nf = new Intl.NumberFormat('en-US');
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const svgEl = (name, attrs) => { const e = document.createElementNS(SVGNS, name); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const t = (key, ...args) => { const v = I18N[state.lang][key]; return typeof v === 'function' ? v(...args) : v; };
+  const fmtPop = (n) => nf.format(Math.round(n));
+  const fmtArea = (n) => nf.format(Math.round(n / 1000) * 1000) + ' km²';
+  const hue = (i) => 'hsl(' + ((i * 137.508) % 360).toFixed(0) + ' 48% 62%)';
+  const cname = (id) => { const c = state.world.countries[id]; return state.lang === 'es' ? c.nameEs : c.nameEn; };
+  const cellName = (c) => (c.fixed ? cname(c.countryId) : c.name);
+
+  /* ---------- Idioma ---------- */
+  function loadLang() {
+    const q = new URLSearchParams(location.search).get('lang');
+    if (q === 'es' || q === 'en') return q;
+    try { const s = localStorage.getItem('lang'); if (s === 'es' || s === 'en') return s; } catch (e) { /* almacenamiento no disponible */ }
+    return 'en';
+  }
+  function applyLang() {
+    document.documentElement.lang = state.lang;
+    document.title = t('title');
+    nf = new Intl.NumberFormat(state.lang === 'es' ? 'es-AR' : 'en-US');
+    document.querySelectorAll('[data-i18n]').forEach((n) => { n.textContent = t(n.dataset.i18n); });
+    document.querySelectorAll('[data-i18n-title]').forEach((n) => { n.title = t(n.dataset.i18nTitle); });
+    document.querySelectorAll('[data-i18n-ph]').forEach((n) => { n.placeholder = t(n.dataset.i18nPh); });
+    el.lang.textContent = t('langBtn');
+    el.map.setAttribute('aria-label', t('mapLabel'));
+    el.method.innerHTML = I18N[state.lang].method.map((x) => '<li>' + x + '</li>').join('');
+    el.loading.textContent = t(state.loadingKey);
+    if (state.banner) renderBanner();
+    if (state.world) {
+      renderList(); setStatus(); renderTop();
+      const keep = state.selected;
+      if (keep != null) { renderDetail(keep); const row = el.list.querySelector('.row[data-i="' + keep + '"]'); if (row) row.classList.add('active'); }
+      else renderDetail(null);
+    } else renderDetail(null);
+  }
+  function setLang(lang) {
+    state.lang = lang;
+    try { localStorage.setItem('lang', lang); } catch (e) { /* ignorar */ }
+    applyLang();
+    syncUrl();
+  }
+
+  /* ---------- Avisos ---------- */
+  function showBanner(kind, key, args = [], opts = {}) { state.banner = { kind, key, args, retry: !!opts.retry, details: opts.details || null }; renderBanner(); }
+  function renderBanner() {
+    const b = state.banner;
+    el.banner.className = b.kind; el.banner.hidden = false;
+    el.banner.innerHTML = '<span>' + esc(t(b.key, ...b.args)) + '</span>' + (b.retry ? '<button id="retryBtn">' + esc(t('retry')) + '</button>' : '') +
+      (b.details && b.details.length ? '<details><summary>' + esc(t('techDetail')) + '</summary>' + b.details.map(esc).join('<br>') + '</details>' : '');
+    if (b.retry) $('retryBtn').addEventListener('click', loadData);
+  }
+  const hideBanner = () => { state.banner = null; el.banner.hidden = true; el.banner.innerHTML = ''; };
+  function setLoading(key) { state.loadingKey = key; el.loading.textContent = t(key); }
+  function setReady(on) {
+    state.ready = on;
+    [el.gran, el.capMode, el.seed, el.gen, el.real, el.sat, el.top].forEach((x) => { x.disabled = !on; });
+    el.loading.hidden = on;
+  }
+  const nextTick = () => new Promise((r) => setTimeout(r, 30));   // no depende de requestAnimationFrame (se pausa en pestañas ocultas)
+
+  /* ---------- SVG ---------- */
+  function setupSvg() {
+    const svg = d3.select(el.map);
+    svg.selectAll('*').remove();
+    svg.append('defs').append('clipPath').attr('id', 'landClip');
+    zoomG = svg.append('g');
+    satImg = svgEl('image', { x: 0, y: 0, width: W, height: H, preserveAspectRatio: 'none' });
+    satImg.style.display = 'none';
+    zoomG.node().appendChild(satImg);
+    countriesG = zoomG.append('g');
+    cellsG = zoomG.append('g').attr('clip-path', 'url(#landClip)');
+    hoverG = zoomG.append('g').attr('id', 'hoverG').attr('clip-path', 'url(#landClip)');
+    capG = zoomG.append('g');
+    topG = zoomG.append('g');
+    state.satLoaded = false; state.hover = null;
+    zoomBehavior = d3.zoom().scaleExtent([1, 16]).extent([[0, 0], [W, H]]).translateExtent([[0, 0], [W, H]])
+      .on('zoom', (e) => {
+        zoomG.attr('transform', e.transform);
+        state.k = e.transform.k;
+        capG.selectAll('circle').attr('r', 3.2 / state.k);
+        topG.selectAll('g.topcity').each(function () { this.setAttribute('transform', 'translate(' + this.dataset.x + ' ' + this.dataset.y + ') scale(' + (1 / state.k) + ')'); });
+      });
+    svg.call(zoomBehavior);
+  }
+
+  function drawRealWorld() {
+    const clip = document.querySelector('#landClip');
+    clip.innerHTML = ''; countriesG.node().innerHTML = ''; countryEls = [];
+    state.world.countries.forEach((c, i) => {
+      const d = Core.geometryToPath(c.geometry, W, H);
+      clip.appendChild(svgEl('path', { d, 'clip-rule': 'evenodd' }));
+      const p = svgEl('path', { d, class: 'country', fill: hue(i * 7 + 3), 'data-i': i });
+      countriesG.node().appendChild(p); countryEls.push(p);
+    });
+  }
+
+  function drawGenerated() {
+    const g = state.gen, regular = g.cells.filter((c) => !c.fixed);
+    cellsG.node().innerHTML = ''; capG.node().innerHTML = ''; cellEls = [];
+    const rings = Core.traceRegions(g.labels, g.nx, g.ny, regular.length, { smooth: 2, step: g.step });
+    const f = (v) => v.toFixed(1);
+    regular.forEach((cell, i) => {
+      const d = rings[i].map((ring) => 'M' + ring.map(([lon, lat]) => { const [x, y] = Core.lonLatToXY(lon, lat, W, H); return f(x) + ' ' + f(y); }).join('L') + 'Z').join('');
+      if (!d) { cellEls.push(null); return; }
+      const p = svgEl('path', { d, class: 'cell', fill: hue(i), 'data-i': i });
+      cellsG.node().appendChild(p); cellEls.push(p);
+      if (cell.capital) {
+        const [x, y] = Core.lonLatToXY(cell.capital.lon, cell.capital.lat, W, H);
+        capG.node().appendChild(svgEl('circle', { class: 'cap', cx: x.toFixed(1), cy: y.toFixed(1), r: (3.2 / state.k).toFixed(2) }));
+      }
+    });
+    // Territorios fijos (Antártida): su geometría real, encima de las celdas.
+    g.cells.filter((c) => c.fixed).forEach((c) => {
+      const p = svgEl('path', { d: Core.geometryToPath(state.world.countries[c.countryId].geometry, W, H), class: 'cell fixed', 'data-i': c.id });
+      cellsG.node().appendChild(p); cellEls[c.id] = p;
+    });
+  }
+
+  /* ---------- Capa satelital ---------- */
+  function loadSatellite(idx = 0) {
+    if (idx >= SAT_URLS.length) { setSatellite(false); showBanner('warn', 'warnSat'); return; }
+    const img = new Image();
+    img.onload = () => { if (!state.sat) return; satImg.setAttribute('href', SAT_URLS[idx]); satImg.style.display = ''; state.satLoaded = true; };
+    img.onerror = () => loadSatellite(idx + 1);
+    img.src = SAT_URLS[idx];
+  }
+  function setSatellite(on) {
+    state.sat = on;
+    el.sat.setAttribute('aria-pressed', String(on));
+    el.map.classList.toggle('sat', on);
+    if (!on) { satImg.style.display = 'none'; return; }
+    if (state.satLoaded) satImg.style.display = ''; else loadSatellite(0);
+  }
+
+  /* ---------- Resaltado al pasar el cursor ---------- */
+  function setHover(i) {
+    if (i === state.hover) return;
+    state.hover = i;
+    hoverG.node().innerHTML = '';
+    el.map.classList.toggle('hovering', i != null);
+    if (i == null) return;
+    const src = (state.mode === 'real' ? countryEls : cellEls)[i];
+    if (!src) return;
+    const d = src.getAttribute('d'), color = src.getAttribute('fill') || '#9ab';
+    const mk = (cls, extra) => hoverG.node().appendChild(svgEl('path', Object.assign({ d, class: cls }, extra || {})));
+    mk('hl-fill', { fill: src.classList.contains('fixed') ? '#dfe6ee' : color.replace(/(\d+)% (\d+)%\)/, '72% 55%)') });
+    mk('hl-out'); mk('hl-in');
+  }
+
+  /* ---------- Top 5 ciudades del país seleccionado ---------- */
+  function renderTop() {
+    topG && topG.node() && (topG.node().innerHTML = '');
+    el.topSection.hidden = !state.top;
+    if (!state.top || !state.world) return;
+    const sel = state.selected;
+    let cities = [];
+    if (sel != null) cities = Core.citiesIn(state.world, state.mode === 'gen' ? state.gen : null, sel, 5);
+    el.topHeading.textContent = sel == null ? t('topBtn') : t('topFor', state.mode === 'real' ? cname(sel) : cellName(state.gen.cells[sel]));
+    el.topMsg.hidden = cities.length > 0;
+    el.topMsg.textContent = sel == null ? t('topPick') : t('topNone');
+    el.topList.innerHTML = cities.map((c) => '<li><b>' + esc(c.name) + '</b> · ' + fmtPop(c.pop) + '</li>').join('');
+    cities.forEach((c) => {
+      const [x, y] = Core.lonLatToXY(c.lon, c.lat, W, H);
+      const g = svgEl('g', { class: 'topcity', transform: 'translate(' + x.toFixed(1) + ' ' + y.toFixed(1) + ') scale(' + (1 / state.k) + ')' });
+      g.dataset.x = x.toFixed(1); g.dataset.y = y.toFixed(1);
+      g.appendChild(svgEl('circle', { r: 4.5 }));
+      const label = svgEl('text', { x: 8, y: 4 }); label.textContent = c.name;
+      g.appendChild(label); topG.node().appendChild(g);
+    });
+  }
+
+  /* ---------- Compartir ---------- */
+  let toastTimer = null;
+  function toast(msg) {
+    el.toast.textContent = msg; el.toast.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.toast.hidden = true; }, 6000);
+  }
+  function shareUrl() {
+    const p = new URLSearchParams();
+    p.set('n', state.gen.count); p.set('seed', state.gen.seed); p.set('cap', el.capMode.value);
+    if (state.lang === 'es') p.set('lang', 'es');
+    return location.origin + location.pathname + '?' + p.toString();
+  }
+  async function shareMap() {
+    if (state.mode !== 'gen' || !state.gen) return;
+    const code = Core.makeShareCode(state.gen);
+    if (location.protocol === 'file:') {
+      try { await navigator.clipboard.writeText(code); toast(t('shareCopiedFile', code)); }
+      catch (e) { window.prompt(t('shareManual'), code); }
+      return;
+    }
+    const url = shareUrl();
+    if (navigator.share) {
+      try { await navigator.share({ title: t('shareTitle'), text: t('shareText', code), url }); return; }
+      catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(url); toast(t('shareCopied', url)); }
+    catch (e) { window.prompt(t('shareManual'), url); }
+  }
+
+  /* ---------- Información ---------- */
+  function info(i) {
+    if (state.mode === 'real') {
+      const c = state.world.countries[i];
+      return { name: cname(i), rows: [[t('capital'), c.capital ? c.capital.name : '—'], [t('population'), fmtPop(c.pop)]], note: t('noteReal') };
+    }
+    const c = state.gen.cells[i];
+    if (c.fixed) return { name: cellName(c), rows: [[t('population'), fmtPop(c.pop)], [t('area'), '≈ ' + fmtArea(c.areaKm2)]], note: t('noteFixed') };
+    return {
+      name: c.name,
+      rows: [
+        [t('capital'), c.capital ? c.capital.name + (c.capital.fallback ? ' *' : '') : '—'],
+        [t('population'), '≈ ' + fmtPop(c.pop)],
+        [t('area'), '≈ ' + fmtArea(c.areaKm2)],
+        [t('territory'), c.composition.map((x) => cname(x.id) + ' ' + Math.round(x.share * 100) + '%').join(', ')],
+      ],
+      note: c.capital && c.capital.fallback ? t('noteFallback') : '',
+    };
+  }
+  function renderDetail(i) {
+    if (i == null) { el.detail.className = 'hint'; el.detail.textContent = t('hint'); return; }
+    const d = info(i); el.detail.className = '';
+    el.detail.innerHTML = '<h3>' + esc(d.name) + '</h3><dl>' + d.rows.map((r) => '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>').join('') + '</dl>' + (d.note ? '<div class="note">' + esc(d.note) + '</div>' : '');
+  }
+  function renderList() {
+    const items = state.mode === 'real'
+      ? state.world.countries.map((c, i) => ({ i, name: cname(i), pop: c.pop }))
+      : state.gen.cells.map((c, i) => ({ i, name: cellName(c), pop: c.pop }));
+    items.sort((a, b) => b.pop - a.pop);
+    el.listTitle.textContent = state.mode === 'real' ? t('listReal', items.length) : t('listGen', items.filter((x) => !state.gen.cells[x.i].fixed).length);
+    el.list.innerHTML = items.map((x) => '<button class="row" data-i="' + x.i + '"><span>' + esc(x.name) + '</span><span class="pp">' + (state.mode === 'real' ? '' : '≈ ') + fmtPop(x.pop) + '</span></button>').join('');
+  }
+  function select(i) {
+    const els = state.mode === 'real' ? countryEls : cellEls;
+    if (state.selected != null && els[state.selected]) els[state.selected].classList.remove('sel');
+    state.selected = i;
+    document.querySelectorAll('.row.active').forEach((r) => r.classList.remove('active'));
+    if (i != null) {
+      if (els[i]) { els[i].classList.add('sel'); els[i].parentNode.appendChild(els[i]); }
+      const row = el.list.querySelector('.row[data-i="' + i + '"]');
+      if (row) { row.classList.add('active'); row.scrollIntoView({ block: 'nearest' }); }
+    }
+    renderDetail(i); renderTop();
+  }
+  function setStatus() {
+    if (state.mode === 'real') el.status.textContent = t('statusReal', state.world.countries.length, fmtPop(state.world.totalPop));
+    else el.status.textContent = t('statusGen', state.gen.count, state.gen.seed, fmtPop(state.gen.totalPop), state.gen.cells.some((c) => c.fixed));
+  }
+  function syncUrl() {
+    const p = new URLSearchParams();
+    if (state.mode === 'gen' && state.gen) { p.set('n', state.gen.count); p.set('seed', state.gen.seed); p.set('cap', el.capMode.value); }
+    if (state.lang === 'es') p.set('lang', 'es');
+    const qs = p.toString();
+    try { history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '')); } catch (e) { /* p. ej. file:// restringido */ }
+  }
+
+  /* ---------- Acciones ---------- */
+  function showReal() {
+    state.mode = 'real'; state.gen = null; state.selected = null; setHover(null); el.share.disabled = true;
+    countriesG.style('display', null); cellsG.node().innerHTML = ''; capG.node().innerHTML = '';
+    renderList(); renderDetail(null); setStatus(); renderTop(); syncUrl();
+  }
+  function generate(newPlanet) {
+    if (!state.ready) return;
+    const count = Core.granularityToCount(+el.gran.value);
+    const typed = el.seed.value.trim();
+    let seed, avoid = null;
+    if (newPlanet && typed && !/^\d+$/.test(typed)) {
+      const sc = Core.parseShareCode(typed);
+      if (!sc) { showBanner('warn', 'shareBad'); return; }
+      el.gran.value = Core.countToGranularity(sc.count); el.countOut.textContent = sc.count;
+      if ([...el.capMode.options].some((o) => o.value === sc.capitalMode)) el.capMode.value = sc.capitalMode;
+      el.seed.value = String(sc.seed);
+      generate(true); el.seed.value = ''; return;
+    }
+    if (newPlanet) {
+      if (/^\d+$/.test(typed)) seed = Number(typed) >>> 0;            // semilla fija: resultado reproducible
+      else { seed = Core.randomSeed(); avoid = state.prevKeys; }     // semilla nueva: evita nombres de la generación anterior
+    } else {
+      seed = state.gen ? state.gen.seed : Core.randomSeed();
+    }
+    try {
+      state.gen = Core.generate(state.world, { count, seed, capitalMode: el.capMode.value, avoid });
+    } catch (e) {
+      showBanner('err', 'errGen', [e.message]); return;
+    }
+    hideBanner();
+    state.prevKeys = new Set(state.gen.cells.filter((c) => !c.fixed).map((c) => c.key));
+    state.mode = 'gen'; state.selected = null; setHover(null); el.share.disabled = false;
+    countriesG.style('display', 'none');
+    drawGenerated(); renderList(); renderDetail(null); setStatus(); renderTop(); syncUrl();
+  }
+  let regenTimer = null;
+  const regenSoon = () => { clearTimeout(regenTimer); regenTimer = setTimeout(() => { if (state.mode === 'gen') generate(false); }, 150); };
+
+  /* ---------- Carga de datos ---------- */
+  async function loadData() {
+    hideBanner(); setReady(false); setLoading('loadingData');
+    try {
+      if (typeof d3 === 'undefined') throw Object.assign(new Error('d3'), { name: 'D3Error', details: ['cdn.jsdelivr.net/npm/d3@7.9.0', 'unpkg.com/d3@7.9.0'] });
+      setupSvg();
+      const [cRes, pRes] = await Promise.allSettled([Core.loadFirstAvailable(URLS.countries), Core.loadFirstAvailable(URLS.cities)]);
+      if (cRes.status === 'rejected') throw cRes.reason;
+      const countries = Core.normalizeCountries(Core.validateFeatureCollection(cRes.value.data, 'Borders', 100));
+      let cities = [], warn = null;
+      if (pRes.status === 'fulfilled') {
+        try { cities = Core.normalizeCities(Core.validateFeatureCollection(pRes.value.data, 'Cities', 100)); }
+        catch (e) { warn = e.message; }
+      } else warn = (pRes.reason.details || [pRes.reason.message]).join('; ');
+      setLoading('loadingModel');
+      await nextTick();
+      state.world = Core.buildWorld({ countries, cities, step: 0.5 });
+      drawRealWorld(); showReal(); setReady(true);
+      if (warn) showBanner('warn', 'warnCities', [warn]);
+      if (state.sat) setSatellite(true);
+      applyUrlState();
+    } catch (e) {
+      el.loading.hidden = false; setLoading('loadFail');
+      if (e.name === 'D3Error') showBanner('err', 'errD3', [], { retry: true, details: e.details });
+      else if (e.name === 'DataLoadError') showBanner('err', 'errData', [e.message], { retry: true, details: e.details });
+      else showBanner('err', 'errUnexpected', [e.message], { retry: true });
+    }
+  }
+  function applyUrlState() {
+    const q = new URLSearchParams(location.search);
+    const n = parseInt(q.get('n'), 10), seed = q.get('seed'), cap = q.get('cap');
+    if (cap && [...el.capMode.options].some((o) => o.value === cap)) el.capMode.value = cap;
+    if (n >= Core.MIN_COUNT && n <= Core.MAX_COUNT) { el.gran.value = Core.countToGranularity(n); el.countOut.textContent = n; }
+    if (seed && /^\d+$/.test(seed)) { el.seed.value = seed; generate(true); el.seed.value = ''; }   // vacío: el siguiente clic genera fronteras nuevas
+  }
+
+  /* ---------- Eventos ---------- */
+  function wireEvents() {
+    el.gran.addEventListener('input', () => { el.countOut.textContent = Core.granularityToCount(+el.gran.value); regenSoon(); });
+    el.capMode.addEventListener('change', regenSoon);
+    el.gen.addEventListener('click', () => generate(true));
+    el.seed.addEventListener('keydown', (e) => { if (e.key === 'Enter') generate(true); });
+    el.real.addEventListener('click', showReal);
+    el.share.addEventListener('click', shareMap);
+    el.sat.addEventListener('click', () => setSatellite(!state.sat));
+    el.top.addEventListener('click', () => { state.top = !state.top; el.top.setAttribute('aria-pressed', String(state.top)); renderTop(); });
+    el.lang.addEventListener('click', () => setLang(state.lang === 'en' ? 'es' : 'en'));
+    el.list.addEventListener('click', (e) => { const b = e.target.closest('.row'); if (b) select(+b.dataset.i); });
+    el.map.addEventListener('click', (e) => { const x = e.target.closest('[data-i]'); if (x) select(+x.dataset.i); });
+    el.map.addEventListener('pointermove', (e) => {
+      const x = e.target.closest && e.target.closest('[data-i]');
+      if (!x || !state.ready) { el.tip.hidden = true; return; }
+      const d = info(+x.dataset.i), r = el.wrap.getBoundingClientRect();
+      el.tip.innerHTML = '<b>' + esc(d.name) + '</b><br>' + d.rows.slice(0, 2).map((row) => esc(row[0]) + ': ' + esc(row[1])).join('<br>');
+      el.tip.hidden = false;
+      el.tip.style.left = Math.min(e.clientX - r.left + 14, r.width - 250) + 'px';
+      el.tip.style.top = Math.max(e.clientY - r.top + 14, 0) + 'px';
+    });
+    el.map.addEventListener('pointerover', (e) => {
+      const x = e.target.closest && e.target.closest('[data-i]');
+      setHover(x && state.ready ? +x.dataset.i : null);
+    });
+    el.map.addEventListener('pointerleave', () => { el.tip.hidden = true; setHover(null); });
+    window.addEventListener('unhandledrejection', (e) => showBanner('err', 'errUnexpected', [(e.reason && e.reason.message) || String(e.reason)]));
+  }
+
+  window.addEventListener('load', () => {
+    state.lang = loadLang();
+    el.countOut.textContent = Core.granularityToCount(+el.gran.value);
+    applyLang(); wireEvents(); loadData();
+  });
+})();
+</script>
+</body>
+</html>

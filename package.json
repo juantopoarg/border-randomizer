@@ -1,0 +1,12 @@
+{
+  "name": "randomizador-fronteras",
+  "version": "1.0.0",
+  "description": "Planisferio que redibuja el mundo político con nuevos países, nombres, poblaciones y capitales.",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=18" }
+}
