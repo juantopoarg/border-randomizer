@@ -286,3 +286,24 @@ itest('real data: shared code reproduces the same map', () => {
   assert.deepEqual(Array.from(g1.labels), Array.from(g2.labels));
   assert.deepEqual(g1.cells.map((c) => [c.name, c.capital && c.capital.name]), g2.cells.map((c) => [c.name, c.capital && c.capital.name]));
 });
+
+itest('real data: enclaves/exclaves are rare, as in the real world, and the count is still exact', () => {
+  let exclaves = 0, regions = 0;
+  for (const seed of [1, 2, 3, 4]) {
+    const g = Core.generate(real.w, { count: 60, seed });
+    assert.equal(regular(g).length, 60);
+    const { nx, ny, labels } = g, gr = real.w.graph, n = 60;
+    // land pieces per region (8-connected); extra pieces sharing a landmass with another region count as exclaves
+    const mass = new Int32Array(nx * ny), piece = new Int32Array(nx * ny);
+    const nb = (c, k) => { const D = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]][k], j = (c / nx) | 0, jj = j + D[1]; return jj < 0 || jj >= ny ? -1 : jj * nx + ((c - j * nx + D[0] + nx) % nx); };
+    const flood = (s, ok, mark, id) => { const q = [s]; mark[s] = id; for (let h = 0; h < q.length; h++) for (let k = 0; k < 8; k++) { const r = nb(q[h], k); if (r >= 0 && !mark[r] && ok(r)) { mark[r] = id; q.push(r); } } return q; };
+    let nm = 0, np = 0; const pcs = [];
+    for (let i = 0; i < nx * ny; i++) if (gr[i] === 1 && !mass[i]) flood(i, (r) => gr[r] === 1, mass, ++nm);
+    for (let i = 0; i < nx * ny; i++) if (gr[i] === 1 && !piece[i] && labels[i] < n) { const L = labels[i]; pcs.push({ L, mass: mass[i], size: flood(i, (r) => gr[r] === 1 && labels[r] === L, piece, ++np).length }); }
+    const main = new Map(), owners = new Map();
+    for (const p of pcs) { if (!main.has(p.L) || p.size > main.get(p.L).size) main.set(p.L, p); if (!owners.has(p.mass)) owners.set(p.mass, new Set()); owners.get(p.mass).add(p.L); }
+    for (const p of pcs) if (p !== main.get(p.L) && owners.get(p.mass).size > 1) exclaves++;
+    regions += n;
+  }
+  assert.ok(exclaves / regions < 0.06, 'exclave rate ' + exclaves / regions);
+});

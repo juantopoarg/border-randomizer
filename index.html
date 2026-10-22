@@ -575,7 +575,7 @@ const Core = (() => {
       }
     }
     // --- islas sin ninguna semilla: pasan al país con la semilla más cercana ---
-    const sLon = seedNodes.map((i) => world.lon[i]), sLat = seedNodes.map((i) => world.lat[i]);
+    const islands = [];
     for (let idx = 0; idx < N; idx++) {
       if (!graph[idx] || label[idx] >= 0) continue;
       const comp = [idx]; label[idx] = -2;
@@ -587,18 +587,150 @@ const Core = (() => {
           if (graph[nb] && label[nb] === -1) { label[nb] = -2; comp.push(nb); }
         }
       }
-      const j0 = (idx / nx) | 0, owner = nearestSeed(sLon, sLat, -180 + ((idx - j0 * nx) + 0.5) * step, 90 - (j0 + 0.5) * step);
+      islands.push(comp);
+    }
+    // cada isla pasa al país cuya tierra queda más cerca (anillos crecientes desde la isla), no al de la semilla más cercana
+    for (const comp of islands) {
+      const inComp = new Set(comp);
+      let owner = -1;
+      for (let r = 1; r <= 90 && owner < 0; r++) {
+        let bestD = Infinity;
+        for (const c of comp) {
+          const j = (c / nx) | 0, i = c - j * nx;
+          for (let dj = -r; dj <= r; dj++) {
+            const jj = j + dj; if (jj < 0 || jj >= ny) continue;
+            const edge = Math.abs(dj) === r;
+            for (let di = -r; di <= r; di += (edge ? 1 : 2 * r)) {
+              const q = jj * nx + ((i + di + nx) % nx);
+              if (!inComp.has(q) && graph[q] === 1 && label[q] >= 0) { const d = di * di + dj * dj; if (d < bestD) { bestD = d; owner = label[q]; } }
+            }
+          }
+        }
+      }
+      if (owner < 0) owner = 0;
       for (const c of comp) label[c] = owner;
     }
+    absorbExclaves(world, label, n, rng);
     return label;
+  }
+
+  /* Los países reales casi no tienen enclaves ni exclaves: los trozos de un país separados de su cuerpo principal
+   * pero pegados a tierra de otro país se entregan al vecino con el que más frontera comparten. Sólo una pequeña
+   * fracción (EXCLAVE_KEEP) se conserva, como Alaska o Kaliningrado. Las islas propias (tierra aislada por mar
+   * que ningún otro país toca) no se tocan. */
+  const EXCLAVE_KEEP = 0.05, ENCLAVE_KEEP = 0.02;
+  /* Un país entero rodeado por un solo vecino y sin costa (Lesotho, San Marino) es rarísimo en el mundo real:
+   * se funde con su vecino salvo en ~2 % de los casos. Devuelve las etiquetas compactadas y las semillas que sobreviven. */
+  function mergeEnclaves(world, label, seedNodes, rng) {
+    const { nx, ny, graph } = world, N = nx * ny;
+    let n = seedNodes.length;
+    const alive = new Array(n).fill(true), keep = new Array(n).fill(false);
+    const nbOf = (cell, k) => { const j = (cell / nx) | 0, jj = j + NEIGH[k][1]; if (jj < 0 || jj >= ny) return -1; return jj * nx + ((cell - j * nx + NEIGH[k][0] + nx) % nx); };
+    for (let guard = 0; guard < 8; guard++) {
+      const coast = new Array(n).fill(false), nbs = Array.from({ length: n }, () => new Map()), has = new Array(n).fill(false);
+      for (let c = 0; c < N; c++) {
+        if (graph[c] !== 1) continue;
+        const L = label[c]; has[L] = true;
+        for (let k = 0; k < 8; k++) {
+          const q = nbOf(c, k); if (q < 0) continue;
+          if (graph[q] !== 1) coast[L] = true;
+          else if (label[q] !== L) nbs[L].set(label[q], (nbs[L].get(label[q]) || 0) + 1);
+        }
+      }
+      let changed = false;
+      for (let L = 0; L < n; L++) {
+        if (!alive[L] || !has[L] || coast[L] || nbs[L].size !== 1 || keep[L]) continue;
+        if (rng() < ENCLAVE_KEEP) { keep[L] = true; continue; }
+        const to = nbs[L].keys().next().value;
+        for (let c = 0; c < N; c++) if (label[c] === L) label[c] = to;
+        alive[L] = false; changed = true;
+      }
+      if (!changed) break;
+    }
+    return compactRegions(label, seedNodes, alive);
+  }
+  function compactRegions(label, seedNodes, alive) {
+    const map = new Int16Array(seedNodes.length).fill(-1), seeds = [];
+    alive.forEach((a, i) => { if (a) { map[i] = seeds.length; seeds.push(seedNodes[i]); } });
+    for (let c = 0; c < label.length; c++) if (label[c] >= 0) label[c] = map[label[c]];
+    return { label, seedNodes: seeds };
+  }
+  /* Reduce a exactamente `want` regiones fundiendo regiones al azar con su vecino de mayor frontera terrestre. */
+  function trimRegions(world, label, seedNodes, want, rng) {
+    const { nx, ny, graph } = world, N = nx * ny;
+    const alive = new Array(seedNodes.length).fill(true);
+    const nbOf = (cell, k) => { const j = (cell / nx) | 0, jj = j + NEIGH[k][1]; if (jj < 0 || jj >= ny) return -1; return jj * nx + ((cell - j * nx + NEIGH[k][0] + nx) % nx); };
+    let count = seedNodes.length;
+    while (count > want) {
+      const nbs = Array.from({ length: seedNodes.length }, () => new Map());
+      for (let c = 0; c < N; c++) {
+        if (graph[c] !== 1) continue;
+        for (let k = 0; k < 8; k++) { const q = nbOf(c, k); if (q >= 0 && graph[q] === 1 && label[q] !== label[c]) nbs[label[c]].set(label[q], (nbs[label[c]].get(label[q]) || 0) + 1); }
+      }
+      const cand = []; alive.forEach((a, i) => { if (a && nbs[i].size) cand.push(i); });
+      if (!cand.length) break;
+      const L = cand[Math.floor(rng() * cand.length)];
+      let to = -1, bv = 0; for (const [o, v] of nbs[L]) if (v > bv) { bv = v; to = o; }
+      for (let c = 0; c < N; c++) if (label[c] === L) label[c] = to;
+      alive[L] = false; count--;
+    }
+    return compactRegions(label, seedNodes, alive);
+  }
+  function absorbExclaves(world, label, n, rng) {
+    const { nx, ny, graph, rowArea } = world, N = nx * ny;
+    const nbOf = (cell, k) => { const j = (cell / nx) | 0, jj = j + NEIGH[k][1]; if (jj < 0 || jj >= ny) return -1; return jj * nx + ((cell - j * nx + NEIGH[k][0] + nx) % nx); };
+    const flood = (start, ok, mark, id) => {
+      const comp = [start]; mark[start] = id;
+      for (let h = 0; h < comp.length; h++) for (let k = 0; k < 8; k++) {
+        const nb = nbOf(comp[h], k);
+        if (nb >= 0 && !mark[nb] && ok(comp[h], nb)) { mark[nb] = id; comp.push(nb); }
+      }
+      return comp;
+    };
+    // masas de tierra (conectividad de tierra pura) y trozos de cada país dentro de ellas
+    const mass = new Int32Array(N), piece = new Int32Array(N);
+    let nm = 0;
+    for (let i = 0; i < N; i++) if (graph[i] === 1 && !mass[i]) flood(i, (a, b) => graph[b] === 1, mass, ++nm);
+    const pieces = [];
+    for (let i = 0; i < N; i++) {
+      if (graph[i] !== 1 || piece[i]) continue;
+      const comp = flood(i, (a, b) => graph[b] === 1 && label[b] === label[i], piece, pieces.length + 1);
+      let area = 0; for (const c of comp) area += rowArea[(c / nx) | 0];
+      pieces.push({ owner: label[i], cells: comp, area, mass: mass[i] });
+    }
+    const main = new Array(n).fill(null);
+    for (const p of pieces) if (!main[p.owner] || p.area > main[p.owner].area) main[p.owner] = p;
+    // masas ocupadas por más de un país
+    const massOwners = new Map();
+    for (const p of pieces) { if (!massOwners.has(p.mass)) massOwners.set(p.mass, new Set()); massOwners.get(p.mass).add(p.owner); }
+    const frags = pieces.filter((p) => p !== main[p.owner] && massOwners.get(p.mass).size > 1).sort((a, b) => a.area - b.area);
+    for (const p of frags) {
+      if (rng() < EXCLAVE_KEEP) continue;
+      const border = new Map();
+      for (const c of p.cells) for (let k = 0; k < 8; k++) {
+        const nb = nbOf(c, k);
+        if (nb >= 0 && graph[nb] === 1 && label[nb] !== p.owner) border.set(label[nb], (border.get(label[nb]) || 0) + (k < 4 ? 2 : 1));
+      }
+      let best = -1, bv = 0;
+      for (const [o, v] of border) if (v > bv) { bv = v; best = o; }
+      if (best >= 0) for (const c of p.cells) label[c] = best;
+    }
   }
 
   function generate(world, opts) {
     const o = Object.assign({ count: 40, seed: 1, capitalMode: 'populous', avoid: null }, opts || {});
     const rng = mulberry32(o.seed);
     const n = clamp(Math.round(o.count), 1, world.nPoints);
-    const seedNodes = pickSeeds(world, n, rng);
-    const labels = growRegions(world, seedNodes, rng);
+    // Se siembran algunos países de más: los que resultan enclaves se funden con su vecino y el total vuelve a n.
+    let m = n, res = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const sn = pickSeeds(world, Math.min(m, world.nPoints), rng);
+      res = mergeEnclaves(world, growRegions(world, sn, rng), sn, rng);
+      if (res.seedNodes.length >= n || m >= world.nPoints) break;
+      m += (n - res.seedNodes.length) + 1;
+    }
+    if (res.seedNodes.length > n) res = trimRegions(world, res.label, res.seedNodes, n, rng);
+    const seedNodes = res.seedNodes, labels = res.label;
 
     const acc = seedNodes.map(() => ({ pop: 0, cnt: 0, area: 0, v: [0, 0, 0], comp: new Map() }));
     for (let i = 0; i < world.nPoints; i++) {

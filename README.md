@@ -55,10 +55,11 @@ NE_DATA_DIR=/path/to/geojson npm test      # adds the real-data tests
 1. **Land model:** a 0.5° grid; a cell is land if its centre falls in a Natural Earth country. Each country's `POP_EST` is spread by cell area. Antarctica is excluded and always drawn as is.
 2. **Seeds:** N land points, best of 3 candidates by spacing.
 3. **Growth:** seeds expand at the same time (multi-source Dijkstra) over a noisy cost field. Each seed has a log-normal target size (a few giants, many small countries, largest capped at about 12 % of land), its own elongation direction and roughness, so shapes are random rather than Voronoi-like.
-4. **Borders:** traced from the grid, merged and smoothed (Chaikin), clipped to the coast.
-5. **Population:** sum of the cells each new country covers (world total conserved). Area is the sum of cell areas.
-6. **Capitals:** Natural Earth populated places; if a territory has none, the nearest unused city, marked `*`.
-7. **Names:** head of the main contributing country's name plus tail of the second (when ≥ 12 % of the area), or head + an ending by continent; checked against pronounceability rules and unique, never equal to a real name or to the previous generation.
+4. **Enclaves:** real countries almost never have enclaves or exclaves, so separated pieces that touch another country's land are handed to the neighbour they share the longest border with, and a country completely surrounded by a single neighbour is merged into it (extra seeds are planted so the requested count still holds). About 5 % of exclaves and 2 % of enclaves are kept on purpose, similar to the real world. Islands go to the country whose land is nearest.
+5. **Borders:** traced from the grid, merged and smoothed (Chaikin), clipped to the coast.
+6. **Population:** sum of the cells each new country covers (world total conserved). Area is the sum of cell areas.
+7. **Capitals:** Natural Earth populated places; if a territory has none, the nearest unused city, marked `*`.
+8. **Names:** head of the main contributing country's name plus tail of the second (when ≥ 12 % of the area), or head + an ending by continent; checked against pronounceability rules and unique, never equal to a real name or to the previous generation.
 
 ## Data sources
 
